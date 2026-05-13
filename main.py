@@ -222,7 +222,12 @@ class ActualizarVehiculo(BaseModel):
     vencimiento_rt: Optional[str] = None
     vencimiento_gps: Optional[str] = None
     vencimiento_seguro: Optional[str] = None
-    lunas_polarizadas: Optional[int] = None  # <--- ¡CAMBIO CLAVE! Cambió de bool a int
+    lunas_polarizadas: Optional[int] = None 
+    # --- NUEVOS CAMPOS ---
+    modelo: Optional[str] = None
+    ano: Optional[int] = None
+    tipo: Optional[str] = None
+    tipo_propiedad: Optional[int] = None # Es int porque recibe el código 14428...
 
 @app.get("/estado-flota")
 def estado_flota():
@@ -230,12 +235,13 @@ def estado_flota():
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     
     # Agregamos las nuevas columnas de frecuencia y último mantenimiento
-    columnas = [
+   columnas = [
         "cr596_nombre", "cr596_placa", "cr596_estadooperativo", "cr596_kilometrajeactual",
         "cr596_vencimientosoat", "cr596_vencimientorevisiontecnica", "cr596_proximomantenimientokm", 
         "cr596_vencimientogps", "cr596_vencimientoseguro", "cr596_lunaspolarizadas",
         "cr596_nivelcombustible", "cr596_tipocombustible", 
-        "cr596_ultimomantenimientokm", "cr596_frecuenciamantenimiento"
+        "cr596_ultimomantenimientokm", "cr596_frecuenciamantenimiento",
+        "cr596_modelo", "cr596_ano", "cr596_tipo", "cr596_tipopropiedad" # <-- NUEVOS
     ]
     
     endpoint = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_vehiculos?$select={','.join(columnas)}"
@@ -262,6 +268,11 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.vencimiento_gps: payload["cr596_vencimientogps"] = datos.vencimiento_gps
         if datos.vencimiento_seguro: payload["cr596_vencimientoseguro"] = datos.vencimiento_seguro
         if datos.lunas_polarizadas is not None: payload["cr596_lunaspolarizadas"] = datos.lunas_polarizadas
+            # --- NUEVOS CAMPOS ---
+        if datos.modelo is not None: payload["cr596_modelo"] = datos.modelo
+        if datos.ano is not None: payload["cr596_ano"] = datos.ano
+        if datos.tipo is not None: payload["cr596_tipo"] = datos.tipo
+        if datos.tipo_propiedad is not None: payload["cr596_tipopropiedad"] = datos.tipo_propiedad
         
         # LÓGICA INTELIGENTE DE MANTENIMIENTO:
         if datos.ultimo_mantenimiento_km is not None: payload["cr596_ultimomantenimientokm"] = datos.ultimo_mantenimiento_km
