@@ -62,10 +62,16 @@ class RegistroRetorno(BaseModel):
     detalle_taller: str = ""
 
 class RegistroGasto(BaseModel):
-    movimiento_id: str
+    movimiento_id: Optional[str] = None # Opcional, por si es un gasto suelto que no viene de Garita
+    vehiculo_id: str
     tipo_gasto: int
+    fecha: str
+    empresa: int
+    proveedor: str
+    comprobante: str
     monto: float
-    url_comprobante: str = ""
+    metodo_pago: int
+    observacion: str = ""
 
 class RegistroContable(BaseModel):
     gasto_id: str
@@ -179,16 +185,67 @@ def listar_viajes_con_gastos():
     if response.status_code == 200: return {"status": "success", "data": response.json().get("value", [])}
     else: raise HTTPException(status_code=response.status_code, detail=response.text)
 
+class RegistroGasto(BaseModel):
+    movimiento_id: Optional[str] = None # Opcional, por si es un gasto suelto que no viene de Garita
+    vehiculo_id: str
+    tipo_gasto: int
+    fecha: str
+    empresa: int
+    proveedor: str
+    comprobante: str
+    monto: float
+    metodo_pago: int
+    observacion: str = ""
+
 @app.post("/registrar-gasto")
 def registrar_gasto(registro: RegistroGasto):
-    token = get_token([f"{DATAVERSE_URL}/.default"])
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "application/json"}
-    endpoint_gasto = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_gastorutas"
-    payload_gasto = {"cr596_tipogasto": registro.tipo_gasto, "cr596_monto": registro.monto, "cr596_urlcomprobante": registro.url_comprobante, "cr596_Movimiento@odata.bind": f"/cr596_flota_movimientos({registro.movimiento_id})"}
-    res_gasto = requests.post(endpoint_gasto, headers=headers, json=payload_gasto)
-    endpoint_mov = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_movimientos({registro.movimiento_id})"
-    res_mov = requests.patch(endpoint_mov, headers=headers, json={"cr596_reportagastos": False})
-    return {"status": "success", "message": "Gasto guardado."}
+    try:
+        token = get_token([f"{DATAVERSE_URL}/.default"])
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "application/json"}
+        endpoint_gasto = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_gastorutas"
+        
+        payload_gasto = {
+            "cr596_Vehiculo@odata.bind": f"/cr596_flota_vehiculos({registro.vehiculo_id})",
+            "cr596_tipogasto": registro.tipo_gasto,
+            "cr596_fecha": registro.fecha,
+            "cr596_empresa": registro.empresa,
+            "cr596_proveedor": registro.proveedor,
+            "cr596_comprobante": registro.comprobante,
+            "cr596_monto": registro.monto,
+            "cr596_metodopago": registro.metodo_pago,
+            "cr596_observacion": registro.observacion
+        }
+
+        # Si el gasto viene de un viaje de Garita, lo vinculamos para apagar la alerta
+        if registro.movimiento_id:
+            payload_gasto["cr596_Movimiento@odata.bind"] = f"/cr596_flota_movimientos({registro.movimiento_id})"
+
+        res_gasto = requests.post(endpoint_gasto, headers=headers, json=payload_gasto)
+        if res_gasto.status_code != 204: raise HTTPException(status_code=res_gasto.status_code, detail=res_gasto.text)
+
+        # Apagamos la alerta en Garita si existía
+        if registro.movimiento_id:
+            endpoint_mov = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_movimientos({registro.movimiento_id})"
+            requests.patch(endpoint_mov, headers=headers, json={"cr596_reportagastos": False})
+
+        return {"status": "success", "message": "Gasto registrado correctamente."}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/reporte-gastos")
+def reporte_gastos(inicio: str, fin: str):
+    try:
+        token = get_token([f"{DATAVERSE_URL}/.default"])
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Prefer": "odata.include-annotations=\"*\""}
+        
+        # Filtramos por fecha y expandimos para traer el nombre del vehículo
+        endpoint = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_gastorutas?$filter=cr596_fecha ge {inicio} and cr596_fecha le {fin}&$expand=cr596_Vehiculo($select=cr596_nombre,cr596_placa)"
+        
+        response = requests.get(endpoint, headers=headers)
+        if response.status_code == 200: 
+            return {"status": "success", "data": response.json().get("value", [])}
+        else: 
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/gastos-pendientes")
 def listar_gastos_pendientes():
