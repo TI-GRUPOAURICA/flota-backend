@@ -234,14 +234,14 @@ def estado_flota():
     token = get_token([f"{DATAVERSE_URL}/.default"])
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     
-    # Agregamos las nuevas columnas de frecuencia y último mantenimiento
-   columnas = [
+    # 🚨 REVISA ESTA LISTA: Aquí deben estar las 4 columnas nuevas al final
+    columnas = [
         "cr596_nombre", "cr596_placa", "cr596_estadooperativo", "cr596_kilometrajeactual",
         "cr596_vencimientosoat", "cr596_vencimientorevisiontecnica", "cr596_proximomantenimientokm", 
         "cr596_vencimientogps", "cr596_vencimientoseguro", "cr596_lunaspolarizadas",
         "cr596_nivelcombustible", "cr596_tipocombustible", 
         "cr596_ultimomantenimientokm", "cr596_frecuenciamantenimiento",
-        "cr596_modelo", "cr596_ano", "cr596_tipo", "cr596_tipopropiedad" # <-- NUEVOS
+        "cr596_modelo", "cr596_ano", "cr596_tipo", "cr596_tipopropiedad" # <--- ¡ESTAS 4!
     ]
     
     endpoint = f"{DATAVERSE_URL}/api/data/v9.2/cr596_flota_vehiculos?$select={','.join(columnas)}"
