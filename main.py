@@ -5,18 +5,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 load_dotenv()
 
-# CONFIGURACIÓN DE SUPABASE
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "").strip()
 
-app = FastAPI(title="Gestión de Flotas API - Supabase Edition")
+app = FastAPI(title="Grupo Aurica ERP - Flota Supabase Pro")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# Helper para construir cabeceras de Supabase
 def supabase_headers():
     return {
         "apikey": SUPABASE_KEY,
@@ -26,7 +24,7 @@ def supabase_headers():
     }
 
 # ==========================================
-# TRADUCTORES DE CAPA (Dataverse Mappings)
+# TRADUCTORES DE CAPA (Mappers de Compatibilidad)
 # ==========================================
 def mapear_vehiculo(v):
     return {
@@ -58,40 +56,31 @@ def mapear_viaje(v):
         "cr596_kmsalida": v.get("km_salida"),
         "_cr596_vehiculo_value": str(v.get("vehiculo_id")),
         "cr596_observacionesretorno": v.get("observaciones_retorno"),
-        "cr596_fechahoraretorno": v.get("fecha_retorno")
-    }
-
-def mapear_gasto(g):
-    return {
-        "cr596_flota_gastorutaid": str(g.get("id")),
-        "cr596_tipogasto": g.get("tipo_gasto"),
-        "cr596_monto": float(g.get("monto")) if g.get("monto") is not None else 0.0,
-        "cr596_fecha": g.get("fecha_gasto"),
-        "cr596_proveedor": g.get("proveedor"),
-        "cr596_comprobante": g.get("comprobante"),
-        "cr596_observacion": g.get("observacion")
+        "cr596_fechahoraretorno": v.get("fecha_retorno"),
+        "conductor_id": str(v.get("conductor_id")) if v.get("conductor_id") else None
     }
 
 # ==========================================
-# MODELOS DE RECEPCIÓN (Pydantic Validation)
+# MODELOS DE RECEPCIÓN (Pydantic)
 # ==========================================
 class RegistroSalida(BaseModel):
     vehiculo_id: str
+    conductor_id: str  # <-- VINCULACIÓN DE CONDUCTOR GLOBAL
     km_salida: int
     combustible_salida: int
     observaciones: str = ""
-    chk_brisas: bool = False
-    chk_parachoques: bool = False
-    chk_llantas: bool = False
-    chk_puertas: bool = False
-    chk_luces: bool = False
-    chk_bocina: bool = False
-    chk_maletero: bool = False
-    chk_lunas: bool = False
-    chk_limpieza: bool = False
-    chk_guardafangos: bool = False
-    chk_capo: bool = False
-    chk_cinturon: bool = False
+    chk_brisas: bool = True
+    chk_parachoques: bool = True
+    chk_llantas: bool = True
+    chk_puertas: bool = True
+    chk_luces: bool = True
+    chk_bocina: bool = True
+    chk_maletero: bool = True
+    chk_lunas: bool = True
+    chk_limpieza: bool = True
+    chk_guardafangos: bool = True
+    chk_capo: bool = True
+    chk_cinturon: bool = True
 
 class RegistroRetorno(BaseModel):
     movimiento_id: str
@@ -102,6 +91,28 @@ class RegistroRetorno(BaseModel):
     observaciones_retorno: str = ""  
     estado_llegada: int = 144280000  
     detalle_taller: str = ""
+    # REQUERIMIENTO: Checklist de Retorno completo
+    chk_brisas: bool = True
+    chk_parachoques: bool = True
+    chk_llantas: bool = True
+    chk_puertas: bool = True
+    chk_luces: bool = True
+    chk_bocina: bool = True
+    chk_maletero: bool = True
+    chk_lunas: bool = True
+    chk_limpieza: bool = True
+    chk_guardafangos: bool = True
+    chk_capo: bool = True
+    chk_cinturon: bool = True
+
+class CargaCombustible(BaseModel):
+    vehiculo_id: str
+    viaje_id: Optional[str] = None
+    volumen_vol: float
+    tipo_combustible: str
+    costo_total: float
+    estacion: str
+    kilometraje_carga: int
 
 class RegistroGasto(BaseModel):
     movimiento_id: Optional[str] = None
@@ -115,105 +126,184 @@ class RegistroGasto(BaseModel):
     metodo_pago: int
     observacion: str = ""
 
-class RegistroContable(BaseModel):
-    gasto_id: str
-    estado_validacion: int
-    numero_comprobante: str
-    cantidad_galones: float = None
-
 class ActualizarVehiculo(BaseModel):
     vehiculo_id: str
     estado_operativo: Optional[int] = None
     ultimo_mantenimiento_km: Optional[int] = None
     frecuencia_mantenimiento: Optional[int] = None
-    vencimiento_soat: Optional[str] = None
-    vencimiento_rt: Optional[str] = None
-    vencimiento_gps: Optional[str] = None
-    vencimiento_seguro: Optional[str] = None
-    lunas_polarizadas: Optional[int] = None 
     modelo: Optional[str] = None
     ano: Optional[int] = None
     tipo: Optional[str] = None
     tipo_propiedad: Optional[int] = None
 
 # ==========================================
-# ENDPOINTS GESTIÓN DE CONTROL (GARITA)
+# ENDPOINTS: GESTIÓN DE CONDUCTORES
 # ==========================================
 
-@app.get("/vehiculos-activos")
-def listar_vehiculos_activos():
+@app.get("/conductores-autorizados")
+def listar_conductores():
     try:
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?select=*", headers=supabase_headers())
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/conductores?select=*", headers=supabase_headers())
         if res.status_code == 200:
-            return {"status": "success", "data": [mapear_vehiculo(v) for v in res.json()]}
+            return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/viajes-abiertos")
-def listar_viajes_abiertos():
-    try:
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?km_retorno=is.null&select=*", headers=supabase_headers())
-        if res.status_code == 200:
-            return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
-        raise HTTPException(status_code=res.status_code, detail=res.text)
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+# ==========================================
+# ENDPOINTS: OPERACIONES DE GARITA
+# ==========================================
 
 @app.post("/registrar-salida")
 def registrar_salida(registro: RegistroSalida):
     try:
-        hora_actual = datetime.now(timezone.utc).isoformat()
-        checklist = {
-            "chk_brisas": registro.chk_brisas, "chk_parachoques": registro.chk_parachoques,
-            "chk_llantas": registro.chk_llantas, "chk_puertas": registro.chk_puertas,
-            "chk_luces": registro.chk_luces, "chk_bocina": registro.chk_bocina,
-            "chk_maletero": registro.chk_maletero, "chk_lunas": registro.chk_lunas,
-            "chk_limpieza": registro.chk_limpieza, "chk_guardafangos": registro.chk_guardafangos,
-            "chk_capo": registro.chk_capo, "chk_cinturon": registro.chk_cinturon
-        }
+        # 1. REQUERIMIENTO: Control de vigencia de brevete mediante alertas/bloqueo
+        res_cond = requests.get(f"{SUPABASE_URL}/rest/v1/conductores?id=eq.{registro.conductor_id}&select=*", headers=supabase_headers())
+        if res_cond.status_code != 200 or not res_cond.json():
+            raise HTTPException(status_code=404, detail="Conductor no encontrado.")
+            
+        conductor = res_cond.json()[0]
+        vencimiento = datetime.strptime(conductor["vencimiento_brevete"], "%Y-%m-%d").date()
+        hoy = datetime.now(timezone.utc).date()
         
+        if vencimiento < hoy:
+            raise HTTPException(status_code=400, detail=f"❌ ALERTA CRÍTICA: El brevete de {conductor['nombre']} está VENCIDO desde el {conductor['vencimiento_brevete']}. Salida rechazada.")
+
+        # 2. Empaquetar el checklist de salida
+        hora_actual = datetime.now(timezone.utc).isoformat()
+        checklist_salida = {
+            "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
+            "puertas": registro.chk_puertas, "luces": registro.chk_luces, "bocina": registro.chk_bocina,
+            "maletero": registro.chk_maletero, "lunas": registro.chk_lunas, "limpieza": registro.chk_limpieza,
+            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
+        }
+
         payload_viaje = {
             "vehiculo_id": registro.vehiculo_id,
-            "nombre_viaje": f"Salida-{hora_actual[:10]}",
+            "conductor_id": registro.conductor_id,
+            "nombre_viaje": f"Ruta-{hora_actual[:10]}",
             "km_salida": registro.km_salida,
             "combustible_salida": registro.combustible_salida,
             "fecha_salida": hora_actual,
             "observaciones_salida": registro.observaciones,
-            "checklist_salida": checklist
+            "checklist_salida": checklist_salida
         }
+        
+        # 3. Registrar viaje e Incidentes automáticos si un check falla en la salida
         res_viaje = requests.post(f"{SUPABASE_URL}/rest/v1/viajes", headers=supabase_headers(), json=payload_viaje)
         if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
-            
+        
+        # Fabricar incidentes si algún check es falso (Mal estado)
+        for componente, estado in checklist_salida.items():
+            if not estado:
+                payload_incidente = {
+                    "vehiculo_id": registro.vehiculo_id,
+                    "descripcion": f"Falla detectada en salida: Componente [{componente.upper()}] con observaciones.",
+                    "origen": "Checklist Salida"
+                }
+                requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
+
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": 144280001})
-        return {"status": "success", "message": "¡Salida registrada exitosamente!"}
+        return {"status": "success", "message": "¡Salida autorizada y registrada con éxito!"}
+    except HTTPException as he: raise he
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/registrar-retorno")
 def registrar_retorno(registro: RegistroRetorno):
     try:
         hora_actual = datetime.now(timezone.utc).isoformat()
-        payload_viaje = {
-            "km_retorno": registro.km_retorno, "combustible_retorno": registro.combustible_retorno,
-            "fecha_retorno": hora_actual, "reporta_gastos": registro.reporta_gastos,
-            "observaciones_retorno": registro.observaciones_retorno, "detalle_taller": registro.detalle_taller
+        checklist_retorno = {
+            "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
+            "puertas": registro.chk_puertas, "luces": registro.chk_luces, "bocina": registro.chk_bocina,
+            "maletero": registro.chk_maletero, "lunas": registro.chk_lunas, "limpieza": registro.chk_limpieza,
+            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
         }
+
+        payload_viaje = {
+            "km_retorno": registro.km_retorno,
+            "combustible_retorno": registro.combustible_retorno,
+            "fecha_retorno": hora_actual,
+            "reporta_gastos": registro.reporta_gastos,
+            "observaciones_retorno": registro.observaciones_retorno,
+            "detalle_taller": registro.detalle_taller,
+            "checklist_salida": checklist_retorno # Guardado en la estructura simplificada
+        }
+        
         res_viaje = requests.patch(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}", headers=supabase_headers(), json=payload_viaje)
         if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
             
+        # REQUERIMIENTO: Registro automático de incidentes derivados del checklist de retorno
+        for componente, estado in checklist_retorno.items():
+            if not estado:
+                payload_incidente = {
+                    "vehiculo_id": registro.vehiculo_id,
+                    "viaje_id": registro.movimiento_id,
+                    "descripcion": f"Falla crítica reportada en retorno: Componente [{componente.upper()}] dañado o ausente.",
+                    "origen": "Checklist Retorno"
+                }
+                requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
+
         payload_veh = {"estado_operativo": registro.estado_llegada, "kilometraje_actual": registro.km_retorno, "nivel_combustible": registro.combustible_retorno}
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json=payload_veh)
-        return {"status": "success", "message": "Retorno registrado con éxito."}
+        return {"status": "success", "message": "Retorno e incidentes procesados correctamente."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
-# ENDPOINTS DE CENTRO DE COSTOS (TESORERÍA)
+# REQUERIMIENTO: CONTROL Y REGISTRO DE COMBUSTIBLE
 # ==========================================
+
+@app.post("/registrar-carga-combustible")
+def registrar_carga_combustible(carga: CargaCombustible):
+    try:
+        # 1. Buscar la última carga de combustible de este vehículo para calcular rendimiento
+        endpoint_last = f"{SUPABASE_URL}/rest/v1/cargas_combustible?vehiculo_id=eq.{carga.vehiculo_id}&order=fecha_carga.desc&limit=1"
+        res_last = requests.get(endpoint_last, headers=supabase_headers())
+        
+        rendimiento_calculado = 0.0
+        if res_last.status_code == 200 and res_last.json():
+            ultima_carga = res_last.json()[0]
+            km_anterior = ultima_carga["kilometraje_carga"]
+            km_recorridos = carga.kilometraje_carga - km_anterior
+            
+            if km_recorridos > 0 and carga.volumen_vol > 0:
+                # REQUERIMIENTO: Cálculo automático de rendimiento por vehículo
+                rendimiento_calculado = round(km_recorridos / float(carga.volumen_vol), 2)
+
+        # 2. Insertar registro de combustible
+        payload_carga = {
+            "vehiculo_id": carga.vehiculo_id, "viaje_id": carga.viaje_id,
+            "volumen_vol": carga.volumen_vol, "tipo_combustible": carga.tipo_combustible,
+            "costo_total": carga.costo_total, "estacion": carga.estacion, "kilometraje_carga": carga.kilometraje_carga
+        }
+        res_insert = requests.post(f"{SUPABASE_URL}/rest/v1/cargas_combustible", headers=supabase_headers(), json=payload_carga)
+        if res_insert.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_insert.status_code, detail=res_insert.text)
+
+        # 3. Actualizar kilometraje del vehículo de forma paralela
+        requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{carga.vehiculo_id}", headers=supabase_headers(), json={"kilometraje_actual": carga.kilometraje_carga})
+
+        return {
+            "status": "success", 
+            "message": "Carga de combustible registrada.", 
+            "rendimiento_periodo": f"{rendimiento_calculado} Km/Unidad Vol."
+        }
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# ENDPOINTS RESTANTES (Mantenimiento e Historiales)
+# ==========================================
+
+@app.get("/vehiculo-incidentes/{vehiculo_id}")
+def listar_incidentes_vehiculo(vehiculo_id: str):
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?vehiculo_id=eq.{vehiculo_id}&order=fecha_incidente.desc", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/viajes-con-gastos")
 def listar_viajes_con_gastos():
     try:
         res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?reporta_gastos=eq.true&select=*", headers=supabase_headers())
-        if res.status_code == 200:
-            return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
+        if res.status_code == 200: return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
@@ -221,45 +311,21 @@ def listar_viajes_con_gastos():
 def registrar_gasto(registro: RegistroGasto):
     try:
         payload_gasto = {
-            "vehiculo_id": registro.vehiculo_id, "tipo_gasto": registro.tipo_gasto,
-            "fecha_gasto": registro.fecha, "empresa": registro.empresa, "proveedor": registro.proveedor,
-            "comprobante": registro.comprobante, "monto": registro.monto, "metodo_pago": registro.metodo_pago, "observacion": registro.observacion
+            "vehiculo_id": registro.vehiculo_id, "tipo_gasto": registro.tipo_gasto, "fecha_gasto": registro.fecha, 
+            "empresa": registro.empresa, "proveedor": registro.proveedor, "comprobante": registro.comprobante, 
+            "monto": registro.monto, "metodo_pago": registro.metodo_pago, "observacion": registro.observacion
         }
         if registro.movimiento_id: payload_gasto["viaje_id"] = registro.movimiento_id
-            
         res_gasto = requests.post(f"{SUPABASE_URL}/rest/v1/gastos", headers=supabase_headers(), json=payload_gasto)
-        if res_gasto.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_gasto.status_code, detail=res_gasto.text)
-            
-        if registro.movimiento_id:
-            requests.patch(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}", headers=supabase_headers(), json={"reporta_gastos": False})
-        return {"status": "success", "message": "Gasto registrado correctamente."}
+        if registro.movimiento_id: requests.patch(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}", headers=supabase_headers(), json={"reporta_gastos": False})
+        return {"status": "success", "message": "Gasto registrado."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/reporte-gastos")
-def reporte_gastos(inicio: str, fin: str):
-    try:
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/gastos?fecha_gasto=gte.{inicio}&fecha_gasto=lte.{fin}&select=*,vehiculos(*)", headers=supabase_headers())
-        if res.status_code == 200:
-            lista = []
-            for g in res.json():
-                g_mapped = mapear_gasto(g)
-                v_raw = g.get("vehiculos", {})
-                g_mapped["cr596_Vehiculo"] = {"cr596_nombre": v_raw.get("nombre", "Desconocido"), "cr596_placa": v_raw.get("placa", "S/P")}
-                lista.append(g_mapped)
-            return {"status": "success", "data": lista}
-        raise HTTPException(status_code=res.status_code, detail=res.text)
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
-# ==========================================
-# ENDPOINTS DE MANTENIMIENTO / FLOTA
-# ==========================================
 
 @app.get("/estado-flota")
 def estado_flota():
     try:
         res = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?select=*", headers=supabase_headers())
-        if res.status_code == 200:
-            return {"status": "success", "data": [mapear_vehiculo(v) for v in res.json()]}
+        if res.status_code == 200: return {"status": "success", "data": [mapear_vehiculo(v) for v in res.json()]}
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
@@ -268,22 +334,10 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
     try:
         payload = {}
         if datos.estado_operativo is not None: payload["estado_operativo"] = datos.estado_operativo
-        if datos.vencimiento_soat: payload["vencimiento_soat"] = datos.vencimiento_soat
-        if datos.vencimiento_rt: payload["vencimiento_rt"] = datos.vencimiento_rt
-        if datos.vencimiento_gps: payload["vencimiento_gps"] = datos.vencimiento_gps
-        if datos.vencimiento_seguro: payload["vencimiento_seguro"] = datos.vencimiento_seguro
-        if datos.lunas_polarizadas is not None: payload["lunas_polarizadas"] = datos.lunas_polarizadas
         if datos.modelo is not None: payload["modelo"] = datos.modelo
         if datos.ano is not None: payload["ano"] = datos.ano
         if datos.tipo is not None: payload["tipo"] = datos.tipo
         if datos.tipo_propiedad is not None: payload["tipo_propiedad"] = datos.tipo_propiedad
-        if datos.ultimo_mantenimiento_km is not None: payload["ultimo_mantenimiento_km"] = datos.ultimo_mantenimiento_km
-        if datos.frecuencia_mantenimiento is not None: payload["frecuencia_mantenimiento"] = datos.frecuencia_mantenimiento
-        
-        if datos.ultimo_mantenimiento_km is not None and datos.frecuencia_mantenimiento is not None:
-            payload["proximo_mantenimiento_km"] = datos.ultimo_mantenimiento_km + datos.frecuencia_mantenimiento
-
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json=payload)
-        if res.status_code not in [200, 201, 204]: raise HTTPException(status_code=res.status_code, detail=res.text)
         return {"status": "success", "message": "Datos actualizados."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
