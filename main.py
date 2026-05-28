@@ -108,6 +108,7 @@ class RegistroRetorno(BaseModel):
     chk_guardafangos: bool = True
     chk_capo: bool = True
     chk_cinturon: bool = True
+    motivo_taller: str = ""
 
 class CargaCombustible(BaseModel):
     vehiculo_id: str
@@ -266,7 +267,16 @@ def registrar_retorno(registro: RegistroRetorno):
                 }
                 requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
 
-        payload_veh = {"estado_operativo": registro.estado_llegada, "kilometraje_actual": registro.km_retorno, "nivel_combustible": registro.combustible_retorno}
+        payload_veh = {
+            "estado_operativo": registro.estado_llegada, 
+            "kilometraje_actual": registro.km_retorno, 
+            "nivel_combustible": registro.combustible_retorno
+        }
+        
+        # LÓGICA INTELIGENTE: Si lo mandan a taller, inyectar la nota
+        if registro.estado_llegada == 144280002 and registro.motivo_taller:
+            payload_veh["notas_mantenimiento"] = f"REPORTE GARITA: {registro.motivo_taller}"
+
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json=payload_veh)
         return {"status": "success", "message": "Retorno e incidentes procesados correctamente."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
