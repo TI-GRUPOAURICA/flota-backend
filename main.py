@@ -70,6 +70,8 @@ class RegistroSalida(BaseModel):
     combustible_salida: int
     destino: str = "" # <-- NUEVO CAMPO OBLIGATORIO
     observaciones: str = "" # <-- AHORA ES OPCIONAL
+    origen: str = ""          # <-- NUEVO: Sede fija (Sede Olavide, Sede Trapiche, etc.)
+    origen_detalle: str = ""
     chk_brisas: bool = True
     chk_parachoques: bool = True
     chk_llantas: bool = True
@@ -202,7 +204,9 @@ def registrar_salida(registro: RegistroSalida):
             "km_salida": registro.km_salida,
             "combustible_salida": registro.combustible_salida,
             "fecha_salida": hora_actual,
-            "destino": registro.destino, # <-- NUEVO CAMPO ENVIADO A SUPABASE
+            "destino": registro.destino,
+            "origen": registro.origen,                  # <-- NUEVO
+            "origen_detalle": registro.origen_detalle,  # <-- NUEVO
             "observaciones_salida": registro.observaciones,
             "checklist_salida": checklist_salida
         }
