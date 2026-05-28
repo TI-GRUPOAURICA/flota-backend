@@ -355,3 +355,57 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json=payload)
         return {"status": "success", "message": "Datos actualizados."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+# ==========================================
+# ENDPOINTS: ADMINISTRACIÓN DE PERSONAL (FASE 3)
+# ==========================================
+
+class NuevoConductor(BaseModel):
+    nombre: str
+    brevete: str
+    vencimiento_brevete: str
+
+class ActualizarConductor(BaseModel):
+    id: str
+    nombre: Optional[str] = None
+    brevete: Optional[str] = None
+    vencimiento_brevete: Optional[str] = None
+
+@app.post("/conductores")
+def crear_conductor(conductor: NuevoConductor):
+    try:
+        payload = {
+            "nombre": conductor.nombre,
+            "brevete": conductor.brevete,
+            "vencimiento_brevete": conductor.vencimiento_brevete
+        }
+        res = requests.post(f"{SUPABASE_URL}/rest/v1/conductores", headers=supabase_headers(), json=payload)
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Conductor registrado correctamente."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/conductores")
+def actualizar_conductor(conductor: ActualizarConductor):
+    try:
+        payload = {}
+        if conductor.nombre: payload["nombre"] = conductor.nombre
+        if conductor.brevete: payload["brevete"] = conductor.brevete
+        if conductor.vencimiento_brevete: payload["vencimiento_brevete"] = conductor.vencimiento_brevete
+        
+        res = requests.patch(f"{SUPABASE_URL}/rest/v1/conductores?id=eq.{conductor.id}", headers=supabase_headers(), json=payload)
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Datos del conductor actualizados."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/conductores/{conductor_id}")
+def eliminar_conductor(conductor_id: str):
+    try:
+        res = requests.delete(f"{SUPABASE_URL}/rest/v1/conductores?id=eq.{conductor_id}", headers=supabase_headers())
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Conductor eliminado del sistema."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
