@@ -138,6 +138,7 @@ class ActualizarVehiculo(BaseModel):
     ano: Optional[int] = None
     tipo: Optional[str] = None
     tipo_propiedad: Optional[int] = None
+    notas_mantenimiento: Optional[str] = None
 
 # ==========================================
 # ENDPOINTS: GESTIÓN DE CONDUCTORES
