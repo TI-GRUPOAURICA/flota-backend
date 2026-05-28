@@ -46,7 +46,8 @@ def mapear_vehiculo(v):
         "cr596_vencimientorevisiontecnica": v.get("vencimiento_rt"),
         "cr596_vencimientoseguro": v.get("vencimiento_seguro"),
         "cr596_vencimientogps": v.get("vencimiento_gps"),
-        "cr596_lunaspolarizadas": v.get("lunas_polarizadas")
+        "cr596_lunaspolarizadas": v.get("lunas_polarizadas"),
+        "notas_mantenimiento": v.get("notas_mantenimiento")
     }
 
 def mapear_viaje(v):
@@ -357,6 +358,7 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.ano is not None: payload["ano"] = datos.ano
         if datos.tipo is not None: payload["tipo"] = datos.tipo
         if datos.tipo_propiedad is not None: payload["tipo_propiedad"] = datos.tipo_propiedad
+        if datos.notas_mantenimiento is not None: payload["notas_mantenimiento"] = datos.notas_mantenimiento
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json=payload)
         return {"status": "success", "message": "Datos actualizados."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
