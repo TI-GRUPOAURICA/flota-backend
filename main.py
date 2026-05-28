@@ -65,10 +65,11 @@ def mapear_viaje(v):
 # ==========================================
 class RegistroSalida(BaseModel):
     vehiculo_id: str
-    conductor_id: str  # <-- VINCULACIÓN DE CONDUCTOR GLOBAL
+    conductor_id: str  
     km_salida: int
     combustible_salida: int
-    observaciones: str = ""
+    destino: str = "" # <-- NUEVO CAMPO OBLIGATORIO
+    observaciones: str = "" # <-- AHORA ES OPCIONAL
     chk_brisas: bool = True
     chk_parachoques: bool = True
     chk_llantas: bool = True
@@ -88,10 +89,10 @@ class RegistroRetorno(BaseModel):
     km_retorno: int
     combustible_retorno: int
     reporta_gastos: bool
-    observaciones_retorno: str = ""  
+    detalle_gastos: str = "" # <-- NUEVO CAMPO PARA GASTOS
+    observaciones_retorno: str = "" # <-- AHORA ES SOLO PARA NOVEDADES DEL AUTO 
     estado_llegada: int = 144280000  
     detalle_taller: str = ""
-    # REQUERIMIENTO: Checklist de Retorno completo
     chk_brisas: bool = True
     chk_parachoques: bool = True
     chk_llantas: bool = True
@@ -152,6 +153,7 @@ def listar_conductores():
 # ==========================================
 # ENDPOINTS: OPERACIONES DE GARITA
 # ==========================================
+
 @app.get("/vehiculos-activos")
 def listar_vehiculos_activos():
     try:
@@ -169,10 +171,11 @@ def listar_viajes_abiertos():
             return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/registrar-salida")
 def registrar_salida(registro: RegistroSalida):
     try:
-        # 1. REQUERIMIENTO: Control de vigencia de brevete mediante alertas/bloqueo
         res_cond = requests.get(f"{SUPABASE_URL}/rest/v1/conductores?id=eq.{registro.conductor_id}&select=*", headers=supabase_headers())
         if res_cond.status_code != 200 or not res_cond.json():
             raise HTTPException(status_code=404, detail="Conductor no encontrado.")
@@ -184,7 +187,6 @@ def registrar_salida(registro: RegistroSalida):
         if vencimiento < hoy:
             raise HTTPException(status_code=400, detail=f"❌ ALERTA CRÍTICA: El brevete de {conductor['nombre']} está VENCIDO desde el {conductor['vencimiento_brevete']}. Salida rechazada.")
 
-        # 2. Empaquetar el checklist de salida
         hora_actual = datetime.now(timezone.utc).isoformat()
         checklist_salida = {
             "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
@@ -200,15 +202,14 @@ def registrar_salida(registro: RegistroSalida):
             "km_salida": registro.km_salida,
             "combustible_salida": registro.combustible_salida,
             "fecha_salida": hora_actual,
+            "destino": registro.destino, # <-- NUEVO CAMPO ENVIADO A SUPABASE
             "observaciones_salida": registro.observaciones,
             "checklist_salida": checklist_salida
         }
         
-        # 3. Registrar viaje e Incidentes automáticos si un check falla en la salida
         res_viaje = requests.post(f"{SUPABASE_URL}/rest/v1/viajes", headers=supabase_headers(), json=payload_viaje)
         if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
         
-        # Fabricar incidentes si algún check es falso (Mal estado)
         for componente, estado in checklist_salida.items():
             if not estado:
                 payload_incidente = {
@@ -222,6 +223,7 @@ def registrar_salida(registro: RegistroSalida):
         return {"status": "success", "message": "¡Salida autorizada y registrada con éxito!"}
     except HTTPException as he: raise he
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.patch("/registrar-retorno")
 def registrar_retorno(registro: RegistroRetorno):
@@ -239,15 +241,15 @@ def registrar_retorno(registro: RegistroRetorno):
             "combustible_retorno": registro.combustible_retorno,
             "fecha_retorno": hora_actual,
             "reporta_gastos": registro.reporta_gastos,
+            "detalle_gastos": registro.detalle_gastos, # <-- NUEVO CAMPO ENVIADO A SUPABASE
             "observaciones_retorno": registro.observaciones_retorno,
             "detalle_taller": registro.detalle_taller,
-            "checklist_salida": checklist_retorno # Guardado en la estructura simplificada
+            "checklist_salida": checklist_retorno 
         }
         
         res_viaje = requests.patch(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}", headers=supabase_headers(), json=payload_viaje)
         if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
             
-        # REQUERIMIENTO: Registro automático de incidentes derivados del checklist de retorno
         for componente, estado in checklist_retorno.items():
             if not estado:
                 payload_incidente = {
@@ -270,7 +272,6 @@ def registrar_retorno(registro: RegistroRetorno):
 @app.post("/registrar-carga-combustible")
 def registrar_carga_combustible(carga: CargaCombustible):
     try:
-        # 1. Buscar la última carga de combustible de este vehículo para calcular rendimiento
         endpoint_last = f"{SUPABASE_URL}/rest/v1/cargas_combustible?vehiculo_id=eq.{carga.vehiculo_id}&order=fecha_carga.desc&limit=1"
         res_last = requests.get(endpoint_last, headers=supabase_headers())
         
@@ -281,10 +282,8 @@ def registrar_carga_combustible(carga: CargaCombustible):
             km_recorridos = carga.kilometraje_carga - km_anterior
             
             if km_recorridos > 0 and carga.volumen_vol > 0:
-                # REQUERIMIENTO: Cálculo automático de rendimiento por vehículo
                 rendimiento_calculado = round(km_recorridos / float(carga.volumen_vol), 2)
 
-        # 2. Insertar registro de combustible
         payload_carga = {
             "vehiculo_id": carga.vehiculo_id, "viaje_id": carga.viaje_id,
             "volumen_vol": carga.volumen_vol, "tipo_combustible": carga.tipo_combustible,
@@ -293,7 +292,6 @@ def registrar_carga_combustible(carga: CargaCombustible):
         res_insert = requests.post(f"{SUPABASE_URL}/rest/v1/cargas_combustible", headers=supabase_headers(), json=payload_carga)
         if res_insert.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_insert.status_code, detail=res_insert.text)
 
-        # 3. Actualizar kilometraje del vehículo de forma paralela
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{carga.vehiculo_id}", headers=supabase_headers(), json={"kilometraje_actual": carga.kilometraje_carga})
 
         return {
