@@ -355,6 +355,19 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json=payload)
         return {"status": "success", "message": "Datos actualizados."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/historial-rutas")
+def historial_rutas():
+    try:
+        # Usamos un JOIN nativo de Supabase para traer los nombres reales cruzando tablas
+        query = "select=*,vehiculos(placa,nombre),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=200"
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?{query}", headers=supabase_headers())
+        
+        if res.status_code == 200:
+            return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
 # ==========================================
 # ENDPOINTS: ADMINISTRACIÓN DE PERSONAL (FASE 3)
 # ==========================================
