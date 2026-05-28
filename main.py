@@ -426,3 +426,15 @@ def eliminar_conductor(conductor_id: str):
         return {"status": "success", "message": "Conductor eliminado del sistema."}
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/reporte-gastos")
+def reporte_gastos(inicio: str, fin: str):
+    try:
+        # Filtramos por fecha y hacemos JOIN para obtener el nombre y placa del vehículo
+        query = f"select=*,vehiculos(placa,nombre)&fecha_gasto=gte.{inicio}T00:00:00&fecha_gasto=lte.{fin}T23:59:59"
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/gastos?{query}", headers=supabase_headers())
+        if res.status_code == 200:
+            return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
