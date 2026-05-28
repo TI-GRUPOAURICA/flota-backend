@@ -152,7 +152,23 @@ def listar_conductores():
 # ==========================================
 # ENDPOINTS: OPERACIONES DE GARITA
 # ==========================================
+@app.get("/vehiculos-activos")
+def listar_vehiculos_activos():
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?select=*", headers=supabase_headers())
+        if res.status_code == 200:
+            return {"status": "success", "data": [mapear_vehiculo(v) for v in res.json()]}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/viajes-abiertos")
+def listar_viajes_abiertos():
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?km_retorno=is.null&select=*", headers=supabase_headers())
+        if res.status_code == 200:
+            return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 @app.post("/registrar-salida")
 def registrar_salida(registro: RegistroSalida):
     try:
