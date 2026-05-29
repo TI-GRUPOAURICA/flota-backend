@@ -469,3 +469,33 @@ def reporte_gastos(inicio: str, fin: str):
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# ENDPOINTS: HISTORIALES, REPORTES Y AUDITORÍA
+# ==========================================
+
+@app.get("/vehiculo-incidentes/{vehiculo_id}")
+def listar_incidentes_vehiculo(vehiculo_id: str):
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?vehiculo_id=eq.{vehiculo_id}&order=fecha_incidente.desc", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/historial-rutas")
+def historial_rutas():
+    try:
+        query = "select=*,vehiculos(placa,nombre),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?{query}", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/todos-incidentes")
+def todos_incidentes():
+    try:
+        query = "select=*,vehiculos(placa,nombre)&order=fecha_incidente.desc&limit=500"
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?{query}", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
