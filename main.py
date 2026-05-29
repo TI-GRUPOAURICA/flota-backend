@@ -141,6 +141,12 @@ class ActualizarVehiculo(BaseModel):
     tipo: Optional[str] = None
     tipo_propiedad: Optional[int] = None
     notas_mantenimiento: Optional[str] = None
+    detalle_reparacion: Optional[str] = None # <-- NUEVO: Para el historial
+    vencimiento_soat: Optional[str] = None
+    vencimiento_rt: Optional[str] = None
+    vencimiento_seguro: Optional[str] = None
+    vencimiento_gps: Optional[str] = None
+    lunas_polarizadas: Optional[int] = None
 
 # ==========================================
 # ENDPOINTS: GESTIÓN DE CONDUCTORES
