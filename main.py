@@ -374,21 +374,33 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.ano is not None: payload["ano"] = datos.ano
         if datos.tipo is not None: payload["tipo"] = datos.tipo
         if datos.tipo_propiedad is not None: payload["tipo_propiedad"] = datos.tipo_propiedad
-        if datos.notas_mantenimiento is not None: payload["notas_mantenimiento"] = datos.notas_mantenimiento
+        if datos.frecuencia_mantenimiento is not None: payload["frecuencia_mantenimiento"] = datos.frecuencia_mantenimiento
+        if datos.ultimo_mantenimiento_km is not None: payload["ultimo_mantenimiento_km"] = datos.ultimo_mantenimiento_km
+        if datos.vencimiento_soat is not None: payload["vencimiento_soat"] = datos.vencimiento_soat
+        if datos.vencimiento_rt is not None: payload["vencimiento_rt"] = datos.vencimiento_rt
+        if datos.vencimiento_seguro is not None: payload["vencimiento_seguro"] = datos.vencimiento_seguro
+        if datos.vencimiento_gps is not None: payload["vencimiento_gps"] = datos.vencimiento_gps
+        if datos.lunas_polarizadas is not None: payload["lunas_polarizadas"] = datos.lunas_polarizadas
+
+        # 1. Si el Jefe manda un motivo de ingreso, actualizar la alerta
+        if datos.notas_mantenimiento is not None: 
+            payload["notas_mantenimiento"] = datos.notas_mantenimiento
+
+        # 2. Si el auto vuelve a estar Operativo (Libre), borramos la alerta roja
+        if datos.estado_operativo == 144280000: 
+            payload["notas_mantenimiento"] = "" 
+
+        # 3. AUDITORÍA: Si el Jefe escribió una reparación, la guardamos en el historial para siempre
+        if datos.detalle_reparacion:
+            payload_incidente = {
+                "vehiculo_id": datos.vehiculo_id,
+                "descripcion": f"LIBERACIÓN TALLER: {datos.detalle_reparacion}",
+                "origen": "Mantenimiento"
+            }
+            requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
+
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json=payload)
         return {"status": "success", "message": "Datos actualizados."}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/historial-rutas")
-def historial_rutas():
-    try:
-        # Usamos un JOIN nativo de Supabase para traer los nombres reales cruzando tablas
-        query = "select=*,vehiculos(placa,nombre),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=200"
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?{query}", headers=supabase_headers())
-        
-        if res.status_code == 200:
-            return {"status": "success", "data": res.json()}
-        raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
 # ==========================================
