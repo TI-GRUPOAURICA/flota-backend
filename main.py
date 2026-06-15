@@ -93,8 +93,8 @@ class RegistroRetorno(BaseModel):
     combustible_retorno: int
     reporta_gastos: bool
     detalle_gastos: str = "" # <-- NUEVO CAMPO PARA GASTOS
-    observaciones_retorno: str = "" # <-- AHORA ES SOLO PARA NOVEDADES DEL AUTO 
-    estado_llegada: int = 144280000  
+    observaciones_retorno: str = "" # AHORA ES SOLO PARA NOVEDADES DEL AUTO 
+    estado_llegada: str = "Disponible"  
     detalle_taller: str = ""
     chk_brisas: bool = True
     chk_parachoques: bool = True
@@ -133,7 +133,7 @@ class RegistroGasto(BaseModel):
 
 class ActualizarVehiculo(BaseModel):
     vehiculo_id: str
-    estado_operativo: Optional[int] = None
+    estado_operativo: Optional[str] = None
     ultimo_mantenimiento_km: Optional[int] = None
     frecuencia_mantenimiento: Optional[int] = None
     modelo: Optional[str] = None
@@ -147,6 +147,20 @@ class ActualizarVehiculo(BaseModel):
     vencimiento_seguro: Optional[str] = None
     vencimiento_gps: Optional[str] = None
     lunas_polarizadas: Optional[int] = None
+
+class NuevoSiniestro(BaseModel):
+    vehiculo_id: str
+    fecha_ocurrencia: str
+    responsable: str
+    descripcion: str
+    estado: str = "Reportado"
+    url_documentos: str = ""
+
+class ActualizarSiniestro(BaseModel):
+    id: str
+    estado: Optional[str] = None
+    fecha_cierre: Optional[str] = None
+    url_documentos: Optional[str] = None
 
 # ==========================================
 # ENDPOINTS: GESTIÓN DE CONDUCTORES
@@ -232,7 +246,7 @@ def registrar_salida(registro: RegistroSalida):
                 }
                 requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
 
-        requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": 144280001})
+        requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": "En uso"})
         return {"status": "success", "message": "¡Salida autorizada y registrada con éxito!"}
     except HTTPException as he: raise he
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
@@ -280,7 +294,7 @@ def registrar_retorno(registro: RegistroRetorno):
         }
         
         # LÓGICA INTELIGENTE: Si lo mandan a taller, inyectar la nota
-        if registro.estado_llegada == 144280002 and registro.motivo_taller:
+        if registro.estado_llegada == "Mantenimiento Correctivo" and registro.motivo_taller:
             payload_veh["notas_mantenimiento"] = f"REPORTE GARITA: {registro.motivo_taller}"
 
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json=payload_veh)
@@ -387,7 +401,7 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
             payload["notas_mantenimiento"] = datos.notas_mantenimiento
 
         # 2. Si el auto vuelve a estar Operativo (Libre), borramos la alerta roja
-        if datos.estado_operativo == 144280000: 
+        if datos.estado_operativo == "Disponible": 
             payload["notas_mantenimiento"] = "" 
 
         # 3. AUDITORÍA: Si el Jefe escribió una reparación, la guardamos en el historial para siempre
@@ -499,3 +513,53 @@ def todos_incidentes():
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# ENDPOINTS: SINIESTROS
+# ==========================================
+
+@app.get("/siniestros")
+def listar_siniestros():
+    try:
+        query = "select=*,vehiculos(placa,nombre)&order=fecha_ocurrencia.desc"
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?{query}", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/registrar-siniestro")
+def registrar_siniestro(datos: NuevoSiniestro):
+    try:
+        payload = {
+            "vehiculo_id": datos.vehiculo_id,
+            "fecha_ocurrencia": datos.fecha_ocurrencia,
+            "responsable": datos.responsable,
+            "descripcion": datos.descripcion,
+            "estado": datos.estado,
+            "url_documentos": datos.url_documentos
+        }
+        res = requests.post(f"{SUPABASE_URL}/rest/v1/siniestros", headers=supabase_headers(), json=payload)
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+            
+        # Si el vehículo tiene un siniestro, lo marcamos en la tabla de vehículos
+        requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": "Siniestro"})
+            
+        return {"status": "success", "message": "Siniestro registrado correctamente."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/actualizar-siniestro")
+def actualizar_siniestro(datos: ActualizarSiniestro):
+    try:
+        payload = {}
+        if datos.estado: payload["estado"] = datos.estado
+        if datos.fecha_cierre: payload["fecha_cierre"] = datos.fecha_cierre
+        if datos.url_documentos: payload["url_documentos"] = datos.url_documentos
+        
+        res = requests.patch(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}", headers=supabase_headers(), json=payload)
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Siniestro actualizado."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
