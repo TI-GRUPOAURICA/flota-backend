@@ -545,6 +545,8 @@ def listar_siniestros():
         res = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?{query}", headers=supabase_headers())
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException as he:
+        raise he
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/registrar-siniestro")
@@ -566,6 +568,8 @@ def registrar_siniestro(datos: NuevoSiniestro):
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": "Siniestro"})
             
         return {"status": "success", "message": "Siniestro registrado correctamente."}
+    except HTTPException as he:
+        raise he
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -587,6 +591,8 @@ async def subir_documento_siniestro(file: UploadFile = File(...)):
             
         public_url = f"{SUPABASE_URL}/storage/v1/object/public/documentos/{file_name}"
         return {"status": "success", "url": public_url}
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -602,5 +608,7 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
         if res.status_code not in [200, 201, 204]: 
             raise HTTPException(status_code=res.status_code, detail=res.text)
         return {"status": "success", "message": "Siniestro actualizado."}
+    except HTTPException as he:
+        raise he
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
