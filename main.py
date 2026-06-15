@@ -152,7 +152,7 @@ class ActualizarVehiculo(BaseModel):
 class NuevoSiniestro(BaseModel):
     vehiculo_id: str
     fecha_ocurrencia: str
-    conductor_id: str
+    responsable: str
     descripcion: str
     estado: str = "Reportado"
     url_documentos: str = ""
@@ -298,15 +298,17 @@ def registrar_retorno(registro: RegistroRetorno):
         if registro.reporta_siniestro:
             payload_veh["estado_operativo"] = "Siniestro"
             payload_veh["notas_mantenimiento"] = "REPORTE GARITA: Siniestro reportado en ruta."
-            # Crear siniestro borrador
-            # Necesitamos el conductor_id, lo sacamos del viaje abierto
-            res_v = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}&select=conductor_id", headers=supabase_headers())
-            conductor_id = res_v.json()[0]["conductor_id"] if res_v.status_code == 200 and res_v.json() else None
+            # Necesitamos el nombre del responsable, lo sacamos del viaje abierto
+            res_v = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}&select=conductores(nombre)", headers=supabase_headers())
+            try:
+                responsable = res_v.json()[0]["conductores"]["nombre"]
+            except:
+                responsable = "Reportado por Garita"
             
             payload_siniestro = {
                 "vehiculo_id": registro.vehiculo_id,
                 "fecha_ocurrencia": hora_actual,
-                "conductor_id": conductor_id,
+                "responsable": responsable,
                 "descripcion": "Reportado desde Garita. Pendiente revisión y documentos.",
                 "estado": "Reportado",
                 "url_documentos": ""
@@ -541,7 +543,7 @@ def todos_incidentes():
 @app.get("/siniestros")
 def listar_siniestros():
     try:
-        query = "select=*,vehiculos(placa,nombre),conductores(nombre)&order=fecha_ocurrencia.desc"
+        query = "select=*,vehiculos(placa,nombre)&order=fecha_ocurrencia.desc"
         res = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?{query}", headers=supabase_headers())
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
