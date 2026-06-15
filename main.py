@@ -606,9 +606,17 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
     try:
         payload = {}
         if datos.estado: payload["estado"] = datos.estado
-        if datos.fecha_cierre: payload["fecha_cierre"] = datos.fecha_cierre
         if datos.url_documentos: payload["url_documentos"] = datos.url_documentos
         
+        if datos.estado == "Cerrado":
+            payload["fecha_cierre"] = datetime.now().isoformat()
+            
+            # Liberar el vehículo a Mantenimiento Correctivo para que el Jefe de Mantenimiento pueda editarlo
+            res_s = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}&select=vehiculo_id", headers=supabase_headers())
+            if res_s.status_code == 200 and res_s.json():
+                veh_id = res_s.json()[0]["vehiculo_id"]
+                requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{veh_id}", headers=supabase_headers(), json={"estado_operativo": "Mantenimiento Correctivo"})
+                
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}", headers=supabase_headers(), json=payload)
         if res.status_code not in [200, 201, 204]: 
             raise HTTPException(status_code=res.status_code, detail=res.text)
