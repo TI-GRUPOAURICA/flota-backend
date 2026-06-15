@@ -577,21 +577,24 @@ def registrar_siniestro(datos: NuevoSiniestro):
 
 @app.post("/subir-documento-siniestro")
 async def subir_documento_siniestro(file: UploadFile = File(...)):
+    import urllib.parse
     try:
         content = await file.read()
-        # Nombre único
-        file_name = f"{int(datetime.now().timestamp())}_{file.filename}"
+        # Nombre único y seguro sin espacios
+        safe_filename = file.filename.replace(" ", "_")
+        file_name = f"{int(datetime.now().timestamp())}_{safe_filename}"
         
         headers = supabase_headers()
         # Sobreescribimos el content type para el upload
         headers["Content-Type"] = file.content_type
         
         # Llamada a Supabase Storage (Bucket: documentos)
-        res = requests.post(f"{SUPABASE_URL}/storage/v1/object/documentos/{file_name}", headers=headers, data=content)
+        url_segura = f"{SUPABASE_URL}/storage/v1/object/documentos/{urllib.parse.quote(file_name)}"
+        res = requests.post(url_segura, headers=headers, data=content)
         if res.status_code not in [200, 201]:
             raise HTTPException(status_code=res.status_code, detail=res.text)
             
-        public_url = f"{SUPABASE_URL}/storage/v1/object/public/documentos/{file_name}"
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/documentos/{urllib.parse.quote(file_name)}"
         return {"status": "success", "url": public_url}
     except HTTPException as he:
         raise he
