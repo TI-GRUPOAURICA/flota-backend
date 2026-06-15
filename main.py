@@ -283,6 +283,201 @@ def registrar_retorno(registro: RegistroRetorno):
                 payload_incidente = {
                     "vehiculo_id": registro.vehiculo_id,
                     "viaje_id": registro.movimiento_id,
+    vehiculo_id: str  
+    km_retorno: int
+    combustible_retorno: int
+    reporta_gastos: bool
+    detalle_gastos: str = "" # <-- NUEVO CAMPO PARA GASTOS
+    observaciones_retorno: str = "" # AHORA ES SOLO PARA NOVEDADES DEL AUTO 
+    estado_llegada: str = "Disponible"  
+    reporta_siniestro: bool = False
+    detalle_taller: str = ""
+    chk_brisas: bool = True
+    chk_parachoques: bool = True
+    chk_llantas: bool = True
+    chk_puertas: bool = True
+    chk_luces: bool = True
+    chk_bocina: bool = True
+    chk_maletero: bool = True
+    chk_lunas: bool = True
+    chk_limpieza: bool = True
+    chk_guardafangos: bool = True
+    chk_capo: bool = True
+    chk_cinturon: bool = True
+    motivo_taller: str = ""
+
+class CargaCombustible(BaseModel):
+    vehiculo_id: str
+    viaje_id: Optional[str] = None
+    volumen_vol: float
+    tipo_combustible: str
+    costo_total: float
+    estacion: str
+    kilometraje_carga: int
+
+class RegistroGasto(BaseModel):
+    movimiento_id: Optional[str] = None
+    vehiculo_id: str
+    tipo_gasto: int
+    fecha: str
+    empresa: int
+    proveedor: str
+    comprobante: str
+    monto: float
+    metodo_pago: int
+    observacion: str = ""
+
+class ActualizarVehiculo(BaseModel):
+    vehiculo_id: str
+    estado_operativo: Optional[str] = None
+    ultimo_mantenimiento_km: Optional[int] = None
+    frecuencia_mantenimiento: Optional[int] = None
+    modelo: Optional[str] = None
+    ano: Optional[int] = None
+    tipo: Optional[str] = None
+    tipo_propiedad: Optional[int] = None
+    notas_mantenimiento: Optional[str] = None
+    detalle_reparacion: Optional[str] = None # <-- NUEVO: Para el historial
+    vencimiento_soat: Optional[str] = None
+    vencimiento_rt: Optional[str] = None
+    vencimiento_seguro: Optional[str] = None
+    vencimiento_gps: Optional[str] = None
+    lunas_polarizadas: Optional[int] = None
+
+class NuevoSiniestro(BaseModel):
+    vehiculo_id: str
+    fecha_ocurrencia: str
+    responsable: str
+    descripcion: str
+    estado: str = "Reportado"
+    url_documentos: str = ""
+
+class ActualizarSiniestro(BaseModel):
+    id: str
+    estado: Optional[str] = None
+    fecha_cierre: Optional[str] = None
+    url_documentos: Optional[str] = None
+
+# ==========================================
+# ENDPOINTS: GESTIÓN DE CONDUCTORES
+# ==========================================
+
+@app.get("/conductores-autorizados")
+def listar_conductores():
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/conductores?select=*", headers=supabase_headers())
+        if res.status_code == 200:
+            return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# ENDPOINTS: OPERACIONES DE GARITA
+# ==========================================
+
+@app.get("/vehiculos-activos")
+def listar_vehiculos_activos():
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?select=*", headers=supabase_headers())
+        if res.status_code == 200:
+            return {"status": "success", "data": [mapear_vehiculo(v) for v in res.json()]}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/viajes-abiertos")
+def listar_viajes_abiertos():
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?km_retorno=is.null&select=*", headers=supabase_headers())
+        if res.status_code == 200:
+            return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/registrar-salida")
+def registrar_salida(registro: RegistroSalida):
+    try:
+        res_cond = requests.get(f"{SUPABASE_URL}/rest/v1/conductores?id=eq.{registro.conductor_id}&select=*", headers=supabase_headers())
+        if res_cond.status_code != 200 or not res_cond.json():
+            raise HTTPException(status_code=404, detail="Conductor no encontrado.")
+            
+        conductor = res_cond.json()[0]
+        vencimiento = datetime.strptime(conductor["vencimiento_brevete"], "%Y-%m-%d").date()
+        hoy = datetime.now(timezone.utc).date()
+        
+        if vencimiento < hoy:
+            raise HTTPException(status_code=400, detail=f"❌ ALERTA CRÍTICA: El brevete de {conductor['nombre']} está VENCIDO desde el {conductor['vencimiento_brevete']}. Salida rechazada.")
+
+        hora_actual = datetime.now(timezone.utc).isoformat()
+        checklist_salida = {
+            "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
+            "puertas": registro.chk_puertas, "luces": registro.chk_luces, "bocina": registro.chk_bocina,
+            "maletero": registro.chk_maletero, "lunas": registro.chk_lunas, "limpieza": registro.chk_limpieza,
+            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
+        }
+
+        payload_viaje = {
+            "vehiculo_id": registro.vehiculo_id,
+            "conductor_id": registro.conductor_id,
+            "nombre_viaje": f"Ruta-{hora_actual[:10]}",
+            "km_salida": registro.km_salida,
+            "combustible_salida": registro.combustible_salida,
+            "fecha_salida": hora_actual,
+            "destino": registro.destino,
+            "origen": registro.origen,                  # <-- NUEVO
+            "origen_detalle": registro.origen_detalle,  # <-- NUEVO
+            "observaciones_salida": registro.observaciones,
+            "checklist_salida": checklist_salida
+        }
+        
+        res_viaje = requests.post(f"{SUPABASE_URL}/rest/v1/viajes", headers=supabase_headers(), json=payload_viaje)
+        if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
+        
+        for componente, estado in checklist_salida.items():
+            if not estado:
+                payload_incidente = {
+                    "vehiculo_id": registro.vehiculo_id,
+                    "descripcion": f"Falla detectada en salida: Componente [{componente.upper()}] con observaciones.",
+                    "origen": "Checklist Salida"
+                }
+                requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
+
+        requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": "En uso"})
+        return {"status": "success", "message": "¡Salida autorizada y registrada con éxito!"}
+    except HTTPException as he: raise he
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/registrar-retorno")
+def registrar_retorno(registro: RegistroRetorno):
+    try:
+        hora_actual = datetime.now(timezone.utc).isoformat()
+        checklist_retorno = {
+            "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
+            "puertas": registro.chk_puertas, "luces": registro.chk_luces, "bocina": registro.chk_bocina,
+            "maletero": registro.chk_maletero, "lunas": registro.chk_lunas, "limpieza": registro.chk_limpieza,
+            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
+        }
+
+        payload_viaje = {
+            "km_retorno": registro.km_retorno,
+            "combustible_retorno": registro.combustible_retorno,
+            "fecha_retorno": hora_actual,
+            "reporta_gastos": registro.reporta_gastos,
+            "detalle_gastos": registro.detalle_gastos, # <-- NUEVO CAMPO ENVIADO A SUPABASE
+            "observaciones_retorno": registro.observaciones_retorno,
+            "detalle_taller": registro.detalle_taller,
+            "checklist_salida": checklist_retorno 
+        }
+        
+        res_viaje = requests.patch(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}", headers=supabase_headers(), json=payload_viaje)
+        if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
+            
+        for componente, estado in checklist_retorno.items():
+            if not estado:
+                payload_incidente = {
+                    "vehiculo_id": registro.vehiculo_id,
+                    "viaje_id": registro.movimiento_id,
                     "descripcion": f"Falla crítica reportada en retorno: Componente [{componente.upper()}] dañado o ausente.",
                     "origen": "Checklist Retorno"
                 }
