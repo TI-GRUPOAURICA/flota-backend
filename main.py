@@ -1,7 +1,7 @@
 import os
 import requests
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -95,6 +95,7 @@ class RegistroRetorno(BaseModel):
     detalle_gastos: str = "" # <-- NUEVO CAMPO PARA GASTOS
     observaciones_retorno: str = "" # AHORA ES SOLO PARA NOVEDADES DEL AUTO 
     estado_llegada: str = "Disponible"  
+    reporta_siniestro: bool = False
     detalle_taller: str = ""
     chk_brisas: bool = True
     chk_parachoques: bool = True
@@ -151,7 +152,7 @@ class ActualizarVehiculo(BaseModel):
 class NuevoSiniestro(BaseModel):
     vehiculo_id: str
     fecha_ocurrencia: str
-    responsable: str
+    conductor_id: str
     descripcion: str
     estado: str = "Reportado"
     url_documentos: str = ""
@@ -292,9 +293,28 @@ def registrar_retorno(registro: RegistroRetorno):
             "kilometraje_actual": registro.km_retorno, 
             "nivel_combustible": registro.combustible_retorno
         }
+
+        # INTEGRACIÓN: Si ocurrió un siniestro en ruta
+        if registro.reporta_siniestro:
+            payload_veh["estado_operativo"] = "Siniestro"
+            payload_veh["notas_mantenimiento"] = "REPORTE GARITA: Siniestro reportado en ruta."
+            # Crear siniestro borrador
+            # Necesitamos el conductor_id, lo sacamos del viaje abierto
+            res_v = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}&select=conductor_id", headers=supabase_headers())
+            conductor_id = res_v.json()[0]["conductor_id"] if res_v.status_code == 200 and res_v.json() else None
+            
+            payload_siniestro = {
+                "vehiculo_id": registro.vehiculo_id,
+                "fecha_ocurrencia": hora_actual,
+                "conductor_id": conductor_id,
+                "descripcion": "Reportado desde Garita. Pendiente revisión y documentos.",
+                "estado": "Reportado",
+                "url_documentos": ""
+            }
+            requests.post(f"{SUPABASE_URL}/rest/v1/siniestros", headers=supabase_headers(), json=payload_siniestro)
         
         # LÓGICA INTELIGENTE: Si lo mandan a taller, inyectar la nota
-        if registro.estado_llegada == "Mantenimiento Correctivo" and registro.motivo_taller:
+        elif registro.estado_llegada == "Mantenimiento Correctivo" and registro.motivo_taller:
             payload_veh["notas_mantenimiento"] = f"REPORTE GARITA: {registro.motivo_taller}"
 
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}", headers=supabase_headers(), json=payload_veh)
@@ -521,7 +541,7 @@ def todos_incidentes():
 @app.get("/siniestros")
 def listar_siniestros():
     try:
-        query = "select=*,vehiculos(placa,nombre)&order=fecha_ocurrencia.desc"
+        query = "select=*,vehiculos(placa,nombre),conductores(nombre)&order=fecha_ocurrencia.desc"
         res = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?{query}", headers=supabase_headers())
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
@@ -547,6 +567,27 @@ def registrar_siniestro(datos: NuevoSiniestro):
             
         return {"status": "success", "message": "Siniestro registrado correctamente."}
     except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/subir-documento-siniestro")
+async def subir_documento_siniestro(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        # Nombre único
+        file_name = f"{int(datetime.now().timestamp())}_{file.filename}"
+        
+        headers = supabase_headers()
+        # Sobreescribimos el content type para el upload
+        headers["Content-Type"] = file.content_type
+        
+        # Llamada a Supabase Storage (Bucket: documentos)
+        res = requests.post(f"{SUPABASE_URL}/storage/v1/object/documentos/{file_name}", headers=headers, data=content)
+        if res.status_code not in [200, 201]:
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+            
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/documentos/{file_name}"
+        return {"status": "success", "url": public_url}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/actualizar-siniestro")
