@@ -363,14 +363,6 @@ def registrar_carga_combustible(carga: CargaCombustible):
 # ENDPOINTS RESTANTES (Mantenimiento e Historiales)
 # ==========================================
 
-@app.get("/vehiculo-incidentes/{vehiculo_id}")
-def listar_incidentes_vehiculo(vehiculo_id: str):
-    try:
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?vehiculo_id=eq.{vehiculo_id}&order=fecha_incidente.desc", headers=supabase_headers())
-        if res.status_code == 200: return {"status": "success", "data": res.json()}
-        raise HTTPException(status_code=res.status_code, detail=res.text)
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/viajes-con-gastos")
 def listar_viajes_con_gastos():
     try:
