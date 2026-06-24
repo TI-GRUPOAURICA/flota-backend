@@ -163,6 +163,26 @@ class ActualizarSiniestro(BaseModel):
     fecha_cierre: Optional[str] = None
     url_documentos: Optional[str] = None
 
+class NuevoPermiso(BaseModel):
+    email: str
+    mod_dashboard: bool = False
+    mod_mantenimiento: bool = False
+    mod_garita: bool = False
+    mod_tesoreria: bool = False
+    mod_admin: bool = False
+    mod_siniestros: bool = False
+    mod_conta: bool = False
+
+class ActualizarPermiso(BaseModel):
+    id: str
+    mod_dashboard: Optional[bool] = None
+    mod_mantenimiento: Optional[bool] = None
+    mod_garita: Optional[bool] = None
+    mod_tesoreria: Optional[bool] = None
+    mod_admin: Optional[bool] = None
+    mod_siniestros: Optional[bool] = None
+    mod_conta: Optional[bool] = None
+
 # ==========================================
 # ENDPOINTS: GESTIÓN DE CONDUCTORES
 # ==========================================
@@ -615,5 +635,62 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
         return {"status": "success", "message": "Siniestro actualizado."}
     except HTTPException as he:
         raise he
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# ENDPOINTS: GESTIÓN DE PERMISOS
+# ==========================================
+
+@app.get("/permisos")
+def listar_permisos():
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/usuarios_permisos?select=*", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/permisos/{email}")
+def obtener_permiso_usuario(email: str):
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/usuarios_permisos?email=eq.{email}&select=*", headers=supabase_headers())
+        if res.status_code == 200: 
+            data = res.json()
+            if len(data) > 0:
+                return {"status": "success", "data": data[0]}
+            else:
+                return {"status": "not_found", "message": "Usuario no tiene permisos asignados."}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/permisos")
+def crear_permiso(datos: NuevoPermiso):
+    try:
+        payload = datos.dict()
+        res = requests.post(f"{SUPABASE_URL}/rest/v1/usuarios_permisos", headers=supabase_headers(), json=payload)
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Permisos asignados correctamente."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/permisos")
+def actualizar_permiso(datos: ActualizarPermiso):
+    try:
+        payload = {k: v for k, v in datos.dict().items() if v is not None and k != "id"}
+        res = requests.patch(f"{SUPABASE_URL}/rest/v1/usuarios_permisos?id=eq.{datos.id}", headers=supabase_headers(), json=payload)
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Permisos actualizados."}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/permisos/{id}")
+def eliminar_permiso(id: str):
+    try:
+        res = requests.delete(f"{SUPABASE_URL}/rest/v1/usuarios_permisos?id=eq.{id}", headers=supabase_headers())
+        if res.status_code not in [200, 201, 204]: 
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+        return {"status": "success", "message": "Acceso revocado."}
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
