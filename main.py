@@ -590,10 +590,14 @@ def registrar_siniestro(datos: NuevoSiniestro):
 @app.post("/subir-documento-siniestro")
 async def subir_documento_siniestro(file: UploadFile = File(...)):
     import urllib.parse
+    import re
+    import unicodedata
     try:
         content = await file.read()
-        # Nombre único y seguro sin espacios
-        safe_filename = file.filename.replace(" ", "_")
+        
+        # Sanitización agresiva del nombre
+        filename_nfkd = unicodedata.normalize('NFKD', file.filename).encode('ASCII', 'ignore').decode('utf-8')
+        safe_filename = re.sub(r'[^a-zA-Z0-9_.-]', '', filename_nfkd.replace(" ", "_"))
         file_name = f"{int(datetime.now().timestamp())}_{safe_filename}"
         
         headers = supabase_headers()
