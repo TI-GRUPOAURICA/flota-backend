@@ -7,10 +7,16 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Optional, List
 
+
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "").strip()
+
+AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID", "").strip()
+AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID", "").strip()
+AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "").strip()
+MAIL_SENDER = os.getenv("MAIL_SENDER", "").strip()
 
 app = FastAPI(title="Grupo Aurica ERP - Flota Supabase Pro")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -172,6 +178,7 @@ class NuevoPermiso(BaseModel):
     mod_admin: bool = False
     mod_siniestros: bool = False
     mod_conta: bool = False
+    recibe_alertas: bool = False
 
 class ActualizarPermiso(BaseModel):
     id: str
@@ -182,6 +189,7 @@ class ActualizarPermiso(BaseModel):
     mod_admin: Optional[bool] = None
     mod_siniestros: Optional[bool] = None
     mod_conta: Optional[bool] = None
+    recibe_alertas: Optional[bool] = None
 
 # ==========================================
 # ENDPOINTS: GESTIÓN DE CONDUCTORES
@@ -697,4 +705,144 @@ def eliminar_permiso(id: str):
             raise HTTPException(status_code=res.status_code, detail=res.text)
         return {"status": "success", "message": "Acceso revocado."}
     except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# ENDPOINTS: CRON JOBS Y ALERTAS
+# ==========================================
+
+def evaluar_fecha_vencimiento(fecha_str):
+    if not fecha_str: return None
+    try:
+        fecha_venc = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        hoy = datetime.now(timezone.utc).date()
+        return (fecha_venc - hoy).days
+    except:
+        return None
+
+def evaluar_km(actual, meta):
+    if actual is None or meta is None: return None
+    return meta - actual
+
+@app.get("/cron/evaluar-vencimientos")
+def evaluar_vencimientos():
+    try:
+        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?select=*", headers=supabase_headers())
+        if res_v.status_code != 200: raise Exception("Error al cargar vehículos")
+        vehiculos = res_v.json()
+
+        res_u = requests.get(f"{SUPABASE_URL}/rest/v1/usuarios_permisos?recibe_alertas=eq.true&select=email", headers=supabase_headers())
+        if res_u.status_code != 200: raise Exception("Error al cargar usuarios")
+        destinatarios = [u["email"] for u in res_u.json()]
+        
+        if not destinatarios:
+            destinatarios = ["mantenimiento@auricasac.com"]
+
+        alertas = []
+
+        for v in vehiculos:
+            alertas_vehiculo = []
+            
+            dias_soat = evaluar_fecha_vencimiento(v.get("vencimiento_soat"))
+            if dias_soat is not None and 0 <= dias_soat <= 15:
+                alertas_vehiculo.append(f"<b>SOAT:</b> Vence en {dias_soat} días ({v.get('vencimiento_soat')})")
+                
+            dias_rt = evaluar_fecha_vencimiento(v.get("vencimiento_rt"))
+            if dias_rt is not None and 0 <= dias_rt <= 15:
+                alertas_vehiculo.append(f"<b>Revisión Técnica:</b> Vence en {dias_rt} días ({v.get('vencimiento_rt')})")
+
+            dias_seguro = evaluar_fecha_vencimiento(v.get("vencimiento_seguro"))
+            if dias_seguro is not None and 0 <= dias_seguro <= 15:
+                alertas_vehiculo.append(f"<b>Seguro Vehicular:</b> Vence en {dias_seguro} días ({v.get('vencimiento_seguro')})")
+
+            dias_gps = evaluar_fecha_vencimiento(v.get("vencimiento_gps"))
+            if dias_gps is not None and 0 <= dias_gps <= 15:
+                alertas_vehiculo.append(f"<b>Servicio GPS:</b> Vence en {dias_gps} días ({v.get('vencimiento_gps')})")
+
+            faltan_km = evaluar_km(v.get("kilometraje_actual"), v.get("proximo_mantenimiento_km"))
+            if faltan_km is not None and 0 <= faltan_km <= 1000:
+                alertas_vehiculo.append(f"<b>Mantenimiento:</b> Faltan {faltan_km} Km (Actual: {v.get('kilometraje_actual')})")
+
+            if alertas_vehiculo:
+                alertas.append({
+                    "placa": v.get("placa", "S/P"),
+                    "nombre": v.get("nombre", "Vehículo"),
+                    "detalles": alertas_vehiculo
+                })
+
+        if not alertas:
+            return {"status": "success", "message": "No hay alertas pendientes hoy."}
+
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <h2 style="color: #e74c3c;">🚨 Alertas de Vencimiento de Flota</h2>
+            <p>Se han detectado vehículos con documentos o mantenimientos próximos a vencer (15 días o menos).</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <thead>
+                    <tr style="background-color: #305da0; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Vehículo</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Alertas Críticas</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        for a in alertas:
+            detalles_html = "<br>".join(a["detalles"])
+            html_content += f"""
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">[{a['placa']}] {a['nombre']}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd; color: #e74c3c;">{detalles_html}</td>
+                    </tr>
+            """
+        html_content += """
+                </tbody>
+            </table>
+            <p style="margin-top: 20px; font-size: 12px; color: #888;">Este es un mensaje automático del Sistema de Gestión de Flota - Grupo Aurica.</p>
+        </body>
+        </html>
+        """
+
+        if AZURE_TENANT_ID and AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and MAIL_SENDER:
+            try:
+                # 1. Obtener Token
+                token_url = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/token"
+                token_data = {
+                    "grant_type": "client_credentials",
+                    "client_id": AZURE_CLIENT_ID,
+                    "client_secret": AZURE_CLIENT_SECRET,
+                    "scope": "https://graph.microsoft.com/.default"
+                }
+                token_res = requests.post(token_url, data=token_data)
+                token_res.raise_for_status()
+                access_token = token_res.json().get("access_token")
+
+                # 2. Enviar Correo
+                to_recipients = [{"emailAddress": {"address": correo.strip()}} for correo in destinatarios if correo.strip()]
+                email_msg = {
+                    "message": {
+                        "subject": "🚨 Alerta de Vencimientos - Flota Grupo Aurica",
+                        "body": {"contentType": "HTML", "content": html_content},
+                        "toRecipients": to_recipients
+                    },
+                    "saveToSentItems": "true"
+                }
+
+                send_url = f"https://graph.microsoft.com/v1.0/users/{MAIL_SENDER}/sendMail"
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                }
+                send_res = requests.post(send_url, headers=headers, json=email_msg)
+                send_res.raise_for_status()
+
+            except Exception as mail_e:
+                print(f"Error enviando correo con Graph API: {mail_e}")
+                return {"status": "partial", "message": "Alertas generadas pero falló el envío de correo. Ver logs."}
+        else:
+            print("Las variables de entorno de Azure AD no están configuradas.")
+
+        return {"status": "success", "message": f"Se enviaron alertas de {len(alertas)} vehículos a {len(destinatarios)} destinatarios."}
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
