@@ -44,6 +44,7 @@ def mapear_vehiculo(v):
         "cr596_estadooperativo": v.get("estado_operativo"),
         "cr596_kilometrajeactual": v.get("kilometraje_actual"),
         "cr596_nivelcombustible": v.get("nivel_combustible"),
+        "cr596_capacidadtanquelitros": v.get("capacidad_tanque"),
         "cr596_tipocombustible": v.get("tipo_combustible"),
         "cr596_ultimomantenimientokm": v.get("ultimo_mantenimiento_km"),
         "cr596_frecuenciamantenimiento": v.get("frecuencia_mantenimiento"),
@@ -142,12 +143,13 @@ class RegistroGasto(BaseModel):
 class ActualizarVehiculo(BaseModel):
     vehiculo_id: str
     estado_operativo: Optional[str] = None
-    ultimo_mantenimiento_km: Optional[int] = None
-    frecuencia_mantenimiento: Optional[int] = None
     modelo: Optional[str] = None
     ano: Optional[int] = None
     tipo: Optional[str] = None
     tipo_propiedad: Optional[int] = None
+    frecuencia_mantenimiento: Optional[int] = None
+    ultimo_mantenimiento_km: Optional[int] = None
+    capacidad_tanque: Optional[int] = None
     notas_mantenimiento: Optional[str] = None
     detalle_reparacion: Optional[str] = None
     vencimiento_soat: Optional[str] = None
@@ -461,6 +463,7 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.tipo_propiedad is not None: payload["tipo_propiedad"] = datos.tipo_propiedad
         if datos.frecuencia_mantenimiento is not None: payload["frecuencia_mantenimiento"] = datos.frecuencia_mantenimiento
         if datos.ultimo_mantenimiento_km is not None: payload["ultimo_mantenimiento_km"] = datos.ultimo_mantenimiento_km
+        if datos.capacidad_tanque is not None: payload["capacidad_tanque"] = datos.capacidad_tanque
         if datos.vencimiento_soat is not None: payload["vencimiento_soat"] = datos.vencimiento_soat
         if datos.vencimiento_rt is not None: payload["vencimiento_rt"] = datos.vencimiento_rt
         if datos.vencimiento_seguro is not None: payload["vencimiento_seguro"] = datos.vencimiento_seguro
@@ -614,7 +617,7 @@ def vehiculo_historial_completo(vehiculo_id: str):
 @app.get("/historial-rutas")
 def historial_rutas():
     try:
-        query = "select=*,vehiculos(placa,nombre),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
+        query = "select=*,vehiculos(placa,nombre,capacidad_tanque),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
         res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?{query}", headers=supabase_headers())
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
