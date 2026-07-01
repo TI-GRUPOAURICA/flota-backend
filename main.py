@@ -168,6 +168,7 @@ class ActualizarSiniestro(BaseModel):
     estado: Optional[str] = None
     fecha_cierre: Optional[str] = None
     url_documentos: Optional[str] = None
+    observacion: Optional[str] = None
 
 class NuevoPermiso(BaseModel):
     email: str
@@ -659,14 +660,23 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
         if datos.estado: payload["estado"] = datos.estado
         if datos.url_documentos: payload["url_documentos"] = datos.url_documentos
         
-        if datos.estado == "Cerrado":
+        # Recuperar vehiculo_id y descripcion actual para añadir observación
+        res_s = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}&select=descripcion,vehiculo_id", headers=supabase_headers())
+        veh_id = None
+        if res_s.status_code == 200 and res_s.json():
+            siniestro_actual = res_s.json()[0]
+            veh_id = siniestro_actual.get("vehiculo_id")
+            if datos.observacion:
+                desc_actual = siniestro_actual.get("descripcion", "")
+                estado_str = f"Cambio a {datos.estado}" if datos.estado else "Observación"
+                nueva_desc = desc_actual + f"\n\n[{datetime.now().strftime('%d/%m/%Y')} - {estado_str}]: {datos.observacion}"
+                payload["descripcion"] = nueva_desc
+        
+        if datos.estado == "Cerrado" and veh_id:
             payload["fecha_cierre"] = datetime.now().isoformat()
             
             # Liberar el vehículo a Mantenimiento Correctivo para que el Jefe de Mantenimiento pueda editarlo
-            res_s = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}&select=vehiculo_id", headers=supabase_headers())
-            if res_s.status_code == 200 and res_s.json():
-                veh_id = res_s.json()[0]["vehiculo_id"]
-                requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{veh_id}", headers=supabase_headers(), json={"estado_operativo": "Mantenimiento Correctivo"})
+            requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{veh_id}", headers=supabase_headers(), json={"estado_operativo": "Mantenimiento Correctivo"})
                 
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}", headers=supabase_headers(), json=payload)
         if res.status_code not in [200, 201, 204]: 
