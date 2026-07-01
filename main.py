@@ -241,6 +241,33 @@ def registrar_salida(registro: RegistroSalida):
         if vencimiento < hoy:
             raise HTTPException(status_code=400, detail=f"❌ ALERTA CRÍTICA: El brevete de {conductor['nombre']} está VENCIDO desde el {conductor['vencimiento_brevete']}. Salida rechazada.")
 
+        # ==========================================
+        # VALIDACIÓN DEL VEHÍCULO Y DOCUMENTOS
+        # ==========================================
+        res_veh = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{registro.vehiculo_id}&select=*", headers=supabase_headers())
+        if res_veh.status_code != 200 or not res_veh.json():
+            raise HTTPException(status_code=404, detail="Vehículo no encontrado.")
+        vehiculo = res_veh.json()[0]
+
+        if vehiculo.get("estado_operativo") in ["Siniestro", "Mantenimiento Correctivo", "Mantenimiento Preventivo"]:
+            raise HTTPException(status_code=400, detail="❌ ALERTA CRÍTICA: El vehículo se encuentra en estado de TALLER/CRÍTICO o SINIESTRO. Salida rechazada.")
+
+        doc_vencidos = []
+        hoy_str = hoy.isoformat()
+        
+        if vehiculo.get("vencimiento_soat") and vehiculo.get("vencimiento_soat") < hoy_str: doc_vencidos.append("SOAT")
+        if vehiculo.get("vencimiento_rt") and vehiculo.get("vencimiento_rt") < hoy_str: doc_vencidos.append("Revisión Técnica")
+        if vehiculo.get("vencimiento_seguro") and vehiculo.get("vencimiento_seguro") < hoy_str: doc_vencidos.append("Seguro Vehicular")
+        if vehiculo.get("vencimiento_gps") and vehiculo.get("vencimiento_gps") < hoy_str: doc_vencidos.append("Servicio GPS")
+        
+        km_actual = vehiculo.get("kilometraje_actual") or 0
+        prox_mante = vehiculo.get("proximo_mantenimiento_km") or 0
+        if prox_mante > 0 and km_actual >= prox_mante:
+            doc_vencidos.append("Mantenimiento por Km")
+
+        if doc_vencidos:
+            raise HTTPException(status_code=400, detail=f"❌ ALERTA CRÍTICA: Vehículo con documentos/mantenimiento vencido ({', '.join(doc_vencidos)}). Salida rechazada.")
+
         hora_actual = datetime.now(timezone.utc).isoformat()
         checklist_salida = {
             "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
