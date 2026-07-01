@@ -566,6 +566,50 @@ def listar_incidentes_vehiculo(vehiculo_id: str):
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/vehiculo-gastos/{vehiculo_id}")
+def vehiculo_gastos(vehiculo_id: str):
+    try:
+        query = f"select=*&vehiculo_id=eq.{vehiculo_id}&order=fecha_gasto.desc"
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/gastos?{query}", headers=supabase_headers())
+        if res.status_code == 200: return {"status": "success", "data": res.json()}
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/vehiculo-historial-completo/{vehiculo_id}")
+def vehiculo_historial_completo(vehiculo_id: str):
+    try:
+        # Incidentes
+        res_i = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?vehiculo_id=eq.{vehiculo_id}", headers=supabase_headers())
+        incidentes = res_i.json() if res_i.status_code == 200 else []
+        
+        # Siniestros
+        res_s = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?vehiculo_id=eq.{vehiculo_id}", headers=supabase_headers())
+        siniestros = res_s.json() if res_s.status_code == 200 else []
+        
+        historial = []
+        for i in incidentes:
+            historial.append({
+                "tipo": "Incidente Mecánico",
+                "fecha": i.get("fecha_incidente"),
+                "conductor": i.get("origen") or "No especificado",
+                "descripcion": i.get("descripcion", ""),
+                "estado": "N/A",
+                "docs": i.get("url_documentos", "")
+            })
+        for s in siniestros:
+            historial.append({
+                "tipo": "Siniestro",
+                "fecha": s.get("fecha_ocurrencia"),
+                "conductor": s.get("responsable", "No especificado"),
+                "descripcion": s.get("descripcion", ""),
+                "estado": s.get("estado", "Reportado"),
+                "docs": s.get("url_documentos", "")
+            })
+        
+        historial.sort(key=lambda x: x["fecha"] or "", reverse=True)
+        return {"status": "success", "data": historial}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/historial-rutas")
 def historial_rutas():
     try:
