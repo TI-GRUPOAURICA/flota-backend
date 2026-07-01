@@ -61,6 +61,7 @@ def mapear_viaje(v):
         "cr596_flota_movimientoid": str(v.get("id")),
         "cr596_nombre": v.get("nombre_viaje"),
         "cr596_kmsalida": v.get("km_salida"),
+        "combustible_salida": v.get("combustible_salida"),
         "_cr596_vehiculo_value": str(v.get("vehiculo_id")),
         "cr596_observacionesretorno": v.get("observaciones_retorno"),
         "cr596_fechahoraretorno": v.get("fecha_retorno"),
