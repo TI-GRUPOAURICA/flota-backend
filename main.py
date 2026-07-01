@@ -94,6 +94,7 @@ class RegistroSalida(BaseModel):
     chk_guardafangos: bool = True
     chk_capo: bool = True
     chk_cinturon: bool = True
+    detalles_checklist: dict = {}
 
 class RegistroRetorno(BaseModel):
     movimiento_id: str
@@ -119,6 +120,7 @@ class RegistroRetorno(BaseModel):
     chk_capo: bool = True
     chk_cinturon: bool = True
     motivo_taller: str = ""
+    detalles_checklist: dict = {}
 
 class CargaCombustible(BaseModel):
     vehiculo_id: str
@@ -301,9 +303,10 @@ def registrar_salida(registro: RegistroSalida):
         
         for componente, estado in checklist_salida.items():
             if not estado:
+                detalle_obs = registro.detalles_checklist.get(componente, "Sin detalle reportado.")
                 payload_incidente = {
                     "vehiculo_id": registro.vehiculo_id,
-                    "descripcion": f"Falla detectada en salida: Componente [{componente.upper()}] con observaciones.",
+                    "descripcion": f"Falla detectada en salida: Componente [{componente.upper()}]. Detalle: {detalle_obs}",
                     "origen": "Checklist Salida"
                 }
                 requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
@@ -333,7 +336,7 @@ def registrar_retorno(registro: RegistroRetorno):
             "detalle_gastos": registro.detalle_gastos,
             "observaciones_retorno": registro.observaciones_retorno,
             "detalle_taller": registro.detalle_taller,
-            "checklist_salida": checklist_retorno 
+            "checklist_retorno": checklist_retorno 
         }
         
         res_viaje = requests.patch(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}", headers=supabase_headers(), json=payload_viaje)
@@ -341,10 +344,11 @@ def registrar_retorno(registro: RegistroRetorno):
             
         for componente, estado in checklist_retorno.items():
             if not estado:
+                detalle_obs = registro.detalles_checklist.get(componente, "Sin detalle reportado.")
                 payload_incidente = {
                     "vehiculo_id": registro.vehiculo_id,
                     "viaje_id": registro.movimiento_id,
-                    "descripcion": f"Falla crítica reportada en retorno: Componente [{componente.upper()}] dañado o ausente.",
+                    "descripcion": f"Falla reportada en retorno: Componente [{componente.upper()}]. Detalle: {detalle_obs}",
                     "origen": "Checklist Retorno"
                 }
                 requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
