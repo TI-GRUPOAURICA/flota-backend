@@ -94,6 +94,7 @@ class RegistroSalida(BaseModel):
     chk_guardafangos: bool = True
     chk_capo: bool = True
     chk_cinturon: bool = True
+    chk_otros: bool = True
     detalles_checklist: dict = {}
 
 class RegistroRetorno(BaseModel):
@@ -119,6 +120,7 @@ class RegistroRetorno(BaseModel):
     chk_guardafangos: bool = True
     chk_capo: bool = True
     chk_cinturon: bool = True
+    chk_otros: bool = True
     motivo_taller: str = ""
     detalles_checklist: dict = {}
 
