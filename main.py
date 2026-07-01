@@ -619,13 +619,47 @@ def historial_rutas():
         raise HTTPException(status_code=res.status_code, detail=res.text)
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/todos-incidentes")
-def todos_incidentes():
+@app.get("/historial-global-unificado")
+def historial_global_unificado():
     try:
-        query = "select=*,vehiculos(placa,nombre)&order=fecha_incidente.desc&limit=500"
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?{query}", headers=supabase_headers())
-        if res.status_code == 200: return {"status": "success", "data": res.json()}
-        raise HTTPException(status_code=res.status_code, detail=res.text)
+        # Obtener incidentes
+        query_i = "select=*,vehiculos(placa,nombre)&order=fecha_incidente.desc&limit=500"
+        res_i = requests.get(f"{SUPABASE_URL}/rest/v1/incidentes?{query_i}", headers=supabase_headers())
+        incidentes = res_i.json() if res_i.status_code == 200 else []
+        
+        # Obtener siniestros
+        query_s = "select=*,vehiculos(placa,nombre)&order=fecha_ocurrencia.desc&limit=500"
+        res_s = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?{query_s}", headers=supabase_headers())
+        siniestros = res_s.json() if res_s.status_code == 200 else []
+        
+        historial = []
+        for i in incidentes:
+            historial.append({
+                "id_unico": f"inc_{i.get('id', '')}",
+                "tipo": "Mantenimiento / Falla",
+                "fecha": i.get("fecha_incidente"),
+                "placa": i.get("vehiculos", {}).get("placa", "S/P") if isinstance(i.get("vehiculos"), dict) else "S/P",
+                "vehiculo": i.get("vehiculos", {}).get("nombre", "S/N") if isinstance(i.get("vehiculos"), dict) else "S/N",
+                "conductor": i.get("origen") or "Mantenimiento",
+                "descripcion": i.get("descripcion", ""),
+                "estado": "N/A",
+                "docs": i.get("url_documentos", "")
+            })
+        for s in siniestros:
+            historial.append({
+                "id_unico": f"sin_{s.get('id', '')}",
+                "tipo": "Siniestro",
+                "fecha": s.get("fecha_ocurrencia"),
+                "placa": s.get("vehiculos", {}).get("placa", "S/P") if isinstance(s.get("vehiculos"), dict) else "S/P",
+                "vehiculo": s.get("vehiculos", {}).get("nombre", "S/N") if isinstance(s.get("vehiculos"), dict) else "S/N",
+                "conductor": s.get("responsable", "No especificado"),
+                "descripcion": s.get("descripcion", ""),
+                "estado": s.get("estado", "Reportado"),
+                "docs": s.get("url_documentos", "")
+            })
+        
+        historial.sort(key=lambda x: x["fecha"] or "", reverse=True)
+        return {"status": "success", "data": historial}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
