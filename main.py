@@ -178,6 +178,7 @@ class ActualizarSiniestro(BaseModel):
     fecha_cierre: Optional[str] = None
     url_documentos: Optional[str] = None
     observacion: Optional[str] = None
+    sobrescribir_descripcion: bool = False
 
 class NuevoPermiso(BaseModel):
     email: str
@@ -758,10 +759,13 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
             siniestro_actual = res_s.json()[0]
             veh_id = siniestro_actual.get("vehiculo_id")
             if datos.observacion:
-                desc_actual = siniestro_actual.get("descripcion", "")
-                estado_str = f"Cambio a {datos.estado}" if datos.estado else "Observación"
-                nueva_desc = desc_actual + f"\n\n[{datetime.now().strftime('%d/%m/%Y')} - {estado_str}]: {datos.observacion}"
-                payload["descripcion"] = nueva_desc
+                if datos.sobrescribir_descripcion:
+                    payload["descripcion"] = datos.observacion
+                else:
+                    desc_actual = siniestro_actual.get("descripcion", "")
+                    estado_str = f"Cambio a {datos.estado}" if datos.estado else "Observación"
+                    nueva_desc = desc_actual + f"\n\n[{datetime.now().strftime('%d/%m/%Y')} - {estado_str}]: {datos.observacion}"
+                    payload["descripcion"] = nueva_desc
         
         if datos.estado == "Cerrado" and veh_id:
             payload["fecha_cierre"] = datetime.now().isoformat()
