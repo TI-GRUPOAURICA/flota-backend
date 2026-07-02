@@ -480,6 +480,10 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.vencimiento_gps is not None: payload["vencimiento_gps"] = datos.vencimiento_gps
         if datos.lunas_polarizadas is not None: payload["lunas_polarizadas"] = datos.lunas_polarizadas
 
+        # Obtener nota actual para auditoría antes de cualquier cambio
+        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=notas_mantenimiento", headers=supabase_headers())
+        nota_actual = res_v.json()[0].get("notas_mantenimiento", "") if res_v.status_code == 200 and len(res_v.json()) > 0 else ""
+
         # 1. Si el Jefe manda un motivo de ingreso, actualizar la alerta
         if datos.notas_mantenimiento is not None: 
             payload["notas_mantenimiento"] = datos.notas_mantenimiento
@@ -490,10 +494,14 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
 
         # 3. AUDITORÍA: Si el Jefe escribió una reparación, la guardamos en el historial para siempre
         if datos.detalle_reparacion:
+            es_siniestro = nota_actual and ("siniestro" in nota_actual.lower())
+            origen_inc = "Siniestro" if es_siniestro else "Mantenimiento"
+            prefijo = "LIBERACIÓN DE SINIESTRO:" if es_siniestro else "LIBERACIÓN TALLER:"
+            
             payload_incidente = {
                 "vehiculo_id": datos.vehiculo_id,
-                "descripcion": f"LIBERACIÓN TALLER: {datos.detalle_reparacion}",
-                "origen": "Mantenimiento"
+                "descripcion": f"{prefijo} {datos.detalle_reparacion}",
+                "origen": origen_inc
             }
             requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
 
@@ -771,7 +779,8 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
             payload["fecha_cierre"] = datetime.now().isoformat()
             
             # Liberar el vehículo a Mantenimiento Correctivo para que el Jefe de Mantenimiento pueda editarlo
-            requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{veh_id}", headers=supabase_headers(), json={"estado_operativo": "Mantenimiento Correctivo"})
+            requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{veh_id}", headers=supabase_headers(), 
+json={"estado_operativo": "Mantenimiento Correctivo", "notas_mantenimiento": "Siniestro Cerrado - Requiere liberación técnica en taller."})
                 
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}", headers=supabase_headers(), json=payload)
         if res.status_code not in [200, 201, 204]: 
