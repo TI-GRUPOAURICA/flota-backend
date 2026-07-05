@@ -650,7 +650,7 @@ def vehiculo_historial_completo(vehiculo_id: str):
 @app.get("/historial-rutas")
 def historial_rutas():
     try:
-        query = "select=*,vehiculos(placa,nombre,capacidad_tanque,rendimiento_esperado,cr596_sistemacombustible,cr596_capacidadtanquegas,cr596_rendimientoesperadogas),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
+        query = "select=*,vehiculos(placa,nombre,capacidad_tanque,rendimiento_esperado,sistemacombustible,capacidadtanquegas,rendimientoesperadogas),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
         res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?{query}", headers=supabase_headers())
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
