@@ -55,7 +55,10 @@ def mapear_vehiculo(v):
         "cr596_vencimientoseguro": v.get("vencimiento_seguro"),
         "cr596_vencimientogps": v.get("vencimiento_gps"),
         "cr596_lunaspolarizadas": v.get("lunas_polarizadas"),
-        "notas_mantenimiento": v.get("notas_mantenimiento")
+        "notas_mantenimiento": v.get("notas_mantenimiento"),
+        "cr596_sistemacombustible": v.get("sistemacombustible", "Simple"),
+        "cr596_capacidadtanquegas": v.get("capacidadtanquegas"),
+        "cr596_rendimientoesperadogas": v.get("rendimientoesperadogas")
     }
 
 def mapear_viaje(v):
@@ -64,6 +67,8 @@ def mapear_viaje(v):
         "cr596_nombre": v.get("nombre_viaje"),
         "cr596_kmsalida": v.get("km_salida"),
         "combustible_salida": v.get("combustible_salida"),
+        "combustible_salida_gas": v.get("combustible_salida_gas"),
+        "combustible_retorno_gas": v.get("combustible_retorno_gas"),
         "_cr596_vehiculo_value": str(v.get("vehiculo_id")),
         "cr596_observacionesretorno": v.get("observaciones_retorno"),
         "cr596_fechahoraretorno": v.get("fecha_retorno"),
@@ -78,6 +83,7 @@ class RegistroSalida(BaseModel):
     conductor_id: str  
     km_salida: int
     combustible_salida: int
+    combustible_salida_gas: Optional[int] = None
     destino: str = ""
     observaciones: str = ""
     origen: str = ""
@@ -102,6 +108,7 @@ class RegistroRetorno(BaseModel):
     vehiculo_id: str  
     km_retorno: int
     combustible_retorno: int
+    combustible_retorno_gas: Optional[int] = None
     reporta_gastos: bool
     detalle_gastos: str = ""
     observaciones_retorno: str = ""
@@ -151,6 +158,9 @@ class ActualizarVehiculo(BaseModel):
     modelo: Optional[str] = None
     ano: Optional[int] = None
     tipo: Optional[str] = None
+    sistema_combustible: Optional[str] = None
+    capacidad_tanque_gas: Optional[float] = None
+    rendimiento_esperado_gas: Optional[float] = None
     tipo_propiedad: Optional[int] = None
     frecuencia_mantenimiento: Optional[int] = None
     ultimo_mantenimiento_km: Optional[int] = None
@@ -293,6 +303,7 @@ def registrar_salida(registro: RegistroSalida):
             "nombre_viaje": f"Ruta-{hora_actual[:10]}",
             "km_salida": registro.km_salida,
             "combustible_salida": registro.combustible_salida,
+            "combustible_salida_gas": registro.combustible_salida_gas,
             "fecha_salida": hora_actual,
             "destino": registro.destino,
             "origen": registro.origen,
@@ -334,6 +345,7 @@ def registrar_retorno(registro: RegistroRetorno):
         payload_viaje = {
             "km_retorno": registro.km_retorno,
             "combustible_retorno": registro.combustible_retorno,
+            "combustible_retorno_gas": registro.combustible_retorno_gas,
             "fecha_retorno": hora_actual,
             "reporta_gastos": registro.reporta_gastos,
             "detalle_gastos": registro.detalle_gastos,
@@ -469,11 +481,14 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.modelo is not None: payload["modelo"] = datos.modelo
         if datos.ano is not None: payload["ano"] = datos.ano
         if datos.tipo is not None: payload["tipo"] = datos.tipo
+        if datos.sistema_combustible is not None: payload["sistemacombustible"] = datos.sistema_combustible
         if datos.tipo_propiedad is not None: payload["tipo_propiedad"] = datos.tipo_propiedad
         if datos.frecuencia_mantenimiento is not None: payload["frecuencia_mantenimiento"] = datos.frecuencia_mantenimiento
         if datos.ultimo_mantenimiento_km is not None: payload["ultimo_mantenimiento_km"] = datos.ultimo_mantenimiento_km
         if datos.capacidad_tanque is not None: payload["capacidad_tanque"] = datos.capacidad_tanque
         if datos.rendimiento_esperado is not None: payload["rendimiento_esperado"] = datos.rendimiento_esperado
+        if datos.capacidad_tanque_gas is not None: payload["capacidadtanquegas"] = datos.capacidad_tanque_gas
+        if datos.rendimiento_esperado_gas is not None: payload["rendimientoesperadogas"] = datos.rendimiento_esperado_gas
         if datos.vencimiento_soat is not None: payload["vencimiento_soat"] = datos.vencimiento_soat
         if datos.vencimiento_rt is not None: payload["vencimiento_rt"] = datos.vencimiento_rt
         if datos.vencimiento_seguro is not None: payload["vencimiento_seguro"] = datos.vencimiento_seguro
@@ -635,7 +650,7 @@ def vehiculo_historial_completo(vehiculo_id: str):
 @app.get("/historial-rutas")
 def historial_rutas():
     try:
-        query = "select=*,vehiculos(placa,nombre,capacidad_tanque,rendimiento_esperado),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
+        query = "select=*,vehiculos(placa,nombre,capacidad_tanque,rendimiento_esperado,cr596_sistemacombustible,cr596_capacidadtanquegas,cr596_rendimientoesperadogas),conductores(nombre)&km_retorno=not.is.null&order=fecha_retorno.desc&limit=500"
         res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?{query}", headers=supabase_headers())
         if res.status_code == 200: return {"status": "success", "data": res.json()}
         raise HTTPException(status_code=res.status_code, detail=res.text)
