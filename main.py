@@ -102,6 +102,7 @@ class RegistroSalida(BaseModel):
     chk_cinturon: bool = True
     chk_otros: bool = True
     detalles_checklist: dict = {}
+    docs_validados: Optional[bool] = None
 
 class RegistroRetorno(BaseModel):
     movimiento_id: str
@@ -189,6 +190,7 @@ class ActualizarSiniestro(BaseModel):
     fecha_cierre: Optional[str] = None
     url_documentos: Optional[str] = None
     observacion: Optional[str] = None
+    nombre_taller: Optional[str] = None
     sobrescribir_descripcion: bool = False
 
 class NuevoPermiso(BaseModel):
@@ -298,6 +300,10 @@ def registrar_salida(registro: RegistroSalida):
             "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
         }
 
+        obs_final = registro.observaciones
+        if registro.docs_validados:
+            obs_final += " [Docs físicos validados por Vigilancia]"
+
         payload_viaje = {
             "vehiculo_id": registro.vehiculo_id,
             "conductor_id": registro.conductor_id,
@@ -309,7 +315,7 @@ def registrar_salida(registro: RegistroSalida):
             "destino": registro.destino,
             "origen": registro.origen,
             "origen_detalle": registro.origen_detalle,
-            "observaciones_salida": registro.observaciones,
+            "observaciones_salida": obs_final.strip(),
             "checklist_salida": checklist_salida
         }
         
@@ -789,6 +795,7 @@ def actualizar_siniestro(datos: ActualizarSiniestro):
         payload = {}
         if datos.estado: payload["estado"] = datos.estado
         if datos.url_documentos: payload["url_documentos"] = datos.url_documentos
+        if datos.nombre_taller: payload["nombre_taller"] = datos.nombre_taller
         
         # Recuperar vehiculo_id y descripcion actual para añadir observación
         res_s = requests.get(f"{SUPABASE_URL}/rest/v1/siniestros?id=eq.{datos.id}&select=descripcion,vehiculo_id", headers=supabase_headers())
