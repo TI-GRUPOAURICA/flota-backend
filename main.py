@@ -173,6 +173,7 @@ class ActualizarVehiculo(BaseModel):
     vencimiento_seguro: Optional[str] = None
     vencimiento_gps: Optional[str] = None
     lunas_polarizadas: Optional[int] = None
+    motivo_cambio_estado: Optional[str] = None
 
 class NuevoSiniestro(BaseModel):
     vehiculo_id: str
@@ -495,9 +496,11 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.vencimiento_gps is not None: payload["vencimiento_gps"] = datos.vencimiento_gps
         if datos.lunas_polarizadas is not None: payload["lunas_polarizadas"] = datos.lunas_polarizadas
 
-        # Obtener nota actual para auditoría antes de cualquier cambio
-        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=notas_mantenimiento", headers=supabase_headers())
-        nota_actual = res_v.json()[0].get("notas_mantenimiento", "") if res_v.status_code == 200 and len(res_v.json()) > 0 else ""
+        # Obtener nota y estado actual para auditoría antes de cualquier cambio
+        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=notas_mantenimiento,estado_operativo", headers=supabase_headers())
+        vehiculo_actual = res_v.json()[0] if res_v.status_code == 200 and len(res_v.json()) > 0 else {}
+        nota_actual = vehiculo_actual.get("notas_mantenimiento", "")
+        estado_actual = vehiculo_actual.get("estado_operativo", "")
 
         # 1. Si el Jefe manda un motivo de ingreso, actualizar la alerta
         if datos.notas_mantenimiento is not None: 
@@ -519,6 +522,18 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
                 "origen": origen_inc
             }
             requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
+            
+        # 4. AUDITORÍA DE CAMBIO DE ESTADO: Registrar si el estado cambia (Baja, Preventivo, etc.)
+        if datos.estado_operativo and datos.estado_operativo != estado_actual:
+            estados_auditables = ["Mantenimiento Preventivo", "Mantenimiento Correctivo", "Baja Temporal", "Dado de Baja"]
+            if datos.estado_operativo in estados_auditables:
+                motivo = f" Motivo: {datos.motivo_cambio_estado}" if datos.motivo_cambio_estado else ""
+                payload_incidente = {
+                    "vehiculo_id": datos.vehiculo_id,
+                    "descripcion": f"[CAMBIO DE ESTADO] El vehículo pasó a {datos.estado_operativo.upper()}.{motivo}",
+                    "origen": "Auditoría de Estado"
+                }
+                requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
 
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json=payload)
         return {"status": "success", "message": "Datos actualizados."}
