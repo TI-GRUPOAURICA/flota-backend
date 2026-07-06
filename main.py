@@ -72,7 +72,13 @@ def mapear_viaje(v):
         "_cr596_vehiculo_value": str(v.get("vehiculo_id")),
         "cr596_observacionesretorno": v.get("observaciones_retorno"),
         "cr596_fechahoraretorno": v.get("fecha_retorno"),
-        "conductor_id": str(v.get("conductor_id")) if v.get("conductor_id") else None
+        "conductor_id": str(v.get("conductor_id")) if v.get("conductor_id") else None,
+        "origen": v.get("origen"),
+        "origen_detalle": v.get("origen_detalle"),
+        "destino": v.get("destino"),
+        "fecha_salida": v.get("fecha_salida"),
+        "observaciones_salida": v.get("observaciones_salida"),
+        "conductores": v.get("conductores")
     }
 
 # ==========================================
@@ -244,7 +250,7 @@ def listar_vehiculos_activos():
 @app.get("/viajes-abiertos")
 def listar_viajes_abiertos():
     try:
-        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?km_retorno=is.null&select=*", headers=supabase_headers())
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?km_retorno=is.null&select=*,conductores(nombre)", headers=supabase_headers())
         if res.status_code == 200:
             return {"status": "success", "data": [mapear_viaje(v) for v in res.json()]}
         raise HTTPException(status_code=res.status_code, detail=res.text)
