@@ -377,7 +377,8 @@ def registrar_retorno(registro: RegistroRetorno):
                     "vehiculo_id": registro.vehiculo_id,
                     "viaje_id": registro.movimiento_id,
                     "descripcion": f"Falla reportada en retorno: Componente [{componente.upper()}]. Detalle: {detalle_obs}",
-                    "origen": "Checklist Retorno"
+                    "origen": "Checklist Retorno",
+                    "kilometraje_incidente": registro.km_retorno
                 }
                 requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
 
@@ -509,10 +510,11 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.lunas_polarizadas is not None: payload["lunas_polarizadas"] = datos.lunas_polarizadas
 
         # Obtener nota y estado actual para auditoría antes de cualquier cambio
-        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=notas_mantenimiento,estado_operativo", headers=supabase_headers())
+        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=notas_mantenimiento,estado_operativo,kilometraje_actual", headers=supabase_headers())
         vehiculo_actual = res_v.json()[0] if res_v.status_code == 200 and len(res_v.json()) > 0 else {}
         nota_actual = vehiculo_actual.get("notas_mantenimiento", "")
         estado_actual = vehiculo_actual.get("estado_operativo", "")
+        km_actual = vehiculo_actual.get("kilometraje_actual", 0)
 
         # 1. Si el Jefe manda un motivo de ingreso, actualizar la alerta
         if datos.notas_mantenimiento is not None: 
@@ -531,7 +533,8 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
             payload_incidente = {
                 "vehiculo_id": datos.vehiculo_id,
                 "descripcion": f"{prefijo} {datos.detalle_reparacion}",
-                "origen": origen_inc
+                "origen": origen_inc,
+                "kilometraje_incidente": km_actual
             }
             requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
             
@@ -543,7 +546,8 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
                 payload_incidente = {
                     "vehiculo_id": datos.vehiculo_id,
                     "descripcion": f"[CAMBIO DE ESTADO] El vehículo pasó a {datos.estado_operativo.upper()}.{motivo}",
-                    "origen": "Auditoría de Estado"
+                    "origen": "Auditoría de Estado",
+                    "kilometraje_incidente": km_actual
                 }
                 requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
 
@@ -757,8 +761,21 @@ def registrar_siniestro(datos: NuevoSiniestro):
             raise HTTPException(status_code=res.status_code, detail=res.text)
             
         # Si el vehículo tiene un siniestro, lo marcamos en la tabla de vehículos
+        # Y creamos el incidente correspondiente para la Historia Clínica
+        res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=kilometraje_actual", headers=supabase_headers())
+        veh_actual = res_v.json()[0] if res_v.status_code == 200 and len(res_v.json()) > 0 else {}
+        km_actual = veh_actual.get("kilometraje_actual", 0)
+
         requests.patch(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}", headers=supabase_headers(), json={"estado_operativo": "Siniestro"})
             
+        payload_incidente = {
+            "vehiculo_id": datos.vehiculo_id,
+            "descripcion": f"[SINIESTRO REPORTADO] {datos.descripcion}",
+            "origen": "Siniestro",
+            "kilometraje_incidente": km_actual
+        }
+        requests.post(f"{SUPABASE_URL}/rest/v1/incidentes", headers=supabase_headers(), json=payload_incidente)
+
         return {"status": "success", "message": "Siniestro registrado correctamente."}
     except HTTPException as he:
         raise he
