@@ -78,7 +78,8 @@ def mapear_viaje(v):
         "destino": v.get("destino"),
         "fecha_salida": v.get("fecha_salida"),
         "observaciones_salida": v.get("observaciones_salida"),
-        "conductores": v.get("conductores")
+        "conductores": v.get("conductores"),
+        "checklist_salida": v.get("checklist_salida")
     }
 
 # ==========================================
@@ -291,6 +292,9 @@ def registrar_salida(registro: RegistroSalida):
         if vehiculo.get("vencimiento_gps") and vehiculo.get("vencimiento_gps") < hoy_str: doc_vencidos.append("Servicio GPS")
         
         km_actual = vehiculo.get("kilometraje_actual") or 0
+        if registro.km_salida < km_actual:
+            raise HTTPException(status_code=400, detail=f"❌ El kilometraje de salida ({registro.km_salida}) no puede ser menor al actual ({km_actual}).")
+
         prox_mante = vehiculo.get("proximo_mantenimiento_km") or 0
         if prox_mante > 0 and km_actual >= prox_mante:
             doc_vencidos.append("Mantenimiento por Km")
@@ -303,7 +307,9 @@ def registrar_salida(registro: RegistroSalida):
             "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
             "puertas": registro.chk_puertas, "luces": registro.chk_luces, "bocina": registro.chk_bocina,
             "maletero": registro.chk_maletero, "lunas": registro.chk_lunas, "limpieza": registro.chk_limpieza,
-            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
+            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon,
+            "otros": registro.chk_otros,
+            "detalles": registro.detalles_checklist
         }
 
         obs_final = registro.observaciones
@@ -329,6 +335,7 @@ def registrar_salida(registro: RegistroSalida):
         if res_viaje.status_code not in [200, 201, 204]: raise HTTPException(status_code=res_viaje.status_code, detail=res_viaje.text)
         
         for componente, estado in checklist_salida.items():
+            if componente == "detalles" or componente == "otros": continue
             if not estado:
                 detalle_obs = registro.detalles_checklist.get(componente, "Sin detalle reportado.")
                 payload_incidente = {
@@ -347,12 +354,21 @@ def registrar_salida(registro: RegistroSalida):
 @app.patch("/registrar-retorno")
 def registrar_retorno(registro: RegistroRetorno):
     try:
+        res_viaje_db = requests.get(f"{SUPABASE_URL}/rest/v1/viajes?id=eq.{registro.movimiento_id}&select=*", headers=supabase_headers())
+        if res_viaje_db.status_code == 200 and res_viaje_db.json():
+            viaje = res_viaje_db.json()[0]
+            km_salida = viaje.get("km_salida") or 0
+            if registro.km_retorno < km_salida:
+                raise HTTPException(status_code=400, detail=f"❌ El kilometraje de retorno ({registro.km_retorno}) no puede ser menor al de salida ({km_salida}).")
+
         hora_actual = datetime.now(timezone.utc).isoformat()
         checklist_retorno = {
             "brisas": registro.chk_brisas, "parachoques": registro.chk_parachoques, "llantas": registro.chk_llantas,
             "puertas": registro.chk_puertas, "luces": registro.chk_luces, "bocina": registro.chk_bocina,
             "maletero": registro.chk_maletero, "lunas": registro.chk_lunas, "limpieza": registro.chk_limpieza,
-            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon
+            "guardafangos": registro.chk_guardafangos, "capo": registro.chk_capo, "cinturon": registro.chk_cinturon,
+            "otros": registro.chk_otros,
+            "detalles": registro.detalles_checklist
         }
 
         payload_viaje = {
