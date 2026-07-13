@@ -182,6 +182,8 @@ class ActualizarVehiculo(BaseModel):
     vencimiento_gps: Optional[str] = None
     lunas_polarizadas: Optional[int] = None
     motivo_cambio_estado: Optional[str] = None
+    kilometraje_actual_test: Optional[int] = None
+    nivel_combustible_test: Optional[int] = None
 
 class NuevoSiniestro(BaseModel):
     vehiculo_id: str
@@ -524,6 +526,8 @@ def actualizar_vehiculo(datos: ActualizarVehiculo):
         if datos.vencimiento_seguro is not None: payload["vencimiento_seguro"] = datos.vencimiento_seguro
         if datos.vencimiento_gps is not None: payload["vencimiento_gps"] = datos.vencimiento_gps
         if datos.lunas_polarizadas is not None: payload["lunas_polarizadas"] = datos.lunas_polarizadas
+        if datos.kilometraje_actual_test is not None: payload["kilometraje_actual"] = datos.kilometraje_actual_test
+        if datos.nivel_combustible_test is not None: payload["nivel_combustible"] = datos.nivel_combustible_test
 
         # Obtener nota y estado actual para auditoría antes de cualquier cambio
         res_v = requests.get(f"{SUPABASE_URL}/rest/v1/vehiculos?id=eq.{datos.vehiculo_id}&select=notas_mantenimiento,estado_operativo,kilometraje_actual", headers=supabase_headers())
